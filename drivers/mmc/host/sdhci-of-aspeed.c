@@ -31,6 +31,7 @@ struct aspeed_sdc {
 struct aspeed_sdhci {
 	struct aspeed_sdc *parent;
 	u32 width_mask;
+	u8 cd_inverted;
 };
 
 static void aspeed_sdc_configure_8bit_mode(struct aspeed_sdc *sdc,
@@ -143,6 +144,21 @@ static inline int aspeed_sdhci_calculate_slot(struct aspeed_sdhci *dev,
 	return (delta / 0x100) - 1;
 }
 
+static int aspeed_get_cd(struct mmc_host *mmc)
+{
+	struct aspeed_sdhci *aspeed_sdhci;
+	struct sdhci_pltfm_host *pltfm_priv;
+	struct sdhci_host *host = mmc_priv(mmc);
+
+	int presence = !!(sdhci_readl(host, SDHCI_PRESENT_STATE)
+			 & SDHCI_CARD_PRESENT);
+
+	pltfm_priv = sdhci_priv(host);
+	aspeed_sdhci = sdhci_pltfm_priv(pltfm_priv);
+
+	return presence ^ aspeed_sdhci->cd_inverted;
+}
+
 static int aspeed_sdhci_probe(struct platform_device *pdev)
 {
 	struct sdhci_pltfm_host *pltfm_host;
@@ -181,6 +197,13 @@ static int aspeed_sdhci_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev, "Unable to enable SDIO clock\n");
 		goto err_pltfm_free;
+	}
+
+	dev->cd_inverted = 0;
+	host->mmc_host_ops.get_cd = aspeed_get_cd;
+	if (of_property_read_bool(pdev->dev.of_node, "cd-inverted")) {
+		dev->cd_inverted = 1;
+		dev_info(&pdev->dev, "aspeed: sdhci: presence signal inversion enabled\n");
 	}
 
 	ret = mmc_of_parse(host->mmc);
