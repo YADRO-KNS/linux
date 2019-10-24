@@ -3331,6 +3331,14 @@ static void pci_bus_rescan_done(struct pci_bus *bus)
 	}
 }
 
+void __weak pcibios_root_bus_rescan_prepare(struct pci_bus *root)
+{
+}
+
+void __weak pcibios_root_bus_rescan_done(struct pci_bus *root)
+{
+}
+
 static void pci_setup_bridges(struct pci_bus *bus)
 {
 	struct pci_dev *dev;
@@ -3560,6 +3568,7 @@ unsigned int pci_rescan_bus(struct pci_bus *bus)
 		root = root->parent;
 
 	if (pci_can_move_bars) {
+		pcibios_root_bus_rescan_prepare(root);
 		pci_bus_rescan_prepare(root);
 		pci_bus_update_fixed_range(root);
 
@@ -3570,6 +3579,7 @@ unsigned int pci_rescan_bus(struct pci_bus *bus)
 
 		pci_setup_bridges(root);
 		pci_bus_rescan_done(root);
+		pcibios_root_bus_rescan_done(root);
 	} else {
 		max = pci_scan_child_bus(bus);
 		pci_assign_unassigned_bus_resources(bus);

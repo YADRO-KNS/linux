@@ -16,6 +16,7 @@
 #include <asm/ppc-pci.h>
 #include <asm/firmware.h>
 #include <asm/eeh.h>
+#include <asm/iommu.h>
 
 static struct pci_bus *find_bus_among_children(struct pci_bus *bus,
 					       struct device_node *dn)
@@ -148,3 +149,45 @@ void pci_hp_add_devices(struct pci_bus *bus)
 	pcibios_finish_adding_to_bus(bus);
 }
 EXPORT_SYMBOL_GPL(pci_hp_add_devices);
+
+static void pci_hp_bus_rescan_prepare(struct pci_bus *bus)
+{
+	struct pci_dev *dev;
+
+	list_for_each_entry(dev, &bus->devices, bus_list) {
+		struct pci_bus *child = dev->subordinate;
+
+		if (child)
+			pci_hp_bus_rescan_prepare(child);
+
+		iommu_del_device(&dev->dev);
+	}
+
+	list_for_each_entry(dev, &bus->devices, bus_list) {
+		pcibios_release_device(dev);
+	}
+}
+
+static void pci_hp_bus_rescan_done(struct pci_bus *bus)
+{
+	struct pci_dev *dev;
+
+	list_for_each_entry(dev, &bus->devices, bus_list) {
+		struct pci_bus *child = dev->subordinate;
+
+		pcibios_bus_add_device(dev);
+
+		if (child)
+			pci_hp_bus_rescan_done(child);
+	}
+}
+
+void pcibios_root_bus_rescan_prepare(struct pci_bus *root)
+{
+	pci_hp_bus_rescan_prepare(root);
+}
+
+void pcibios_root_bus_rescan_done(struct pci_bus *root)
+{
+	pci_hp_bus_rescan_done(root);
+}
