@@ -42,10 +42,26 @@ static inline int config_access_valid(struct pci_dn *dn, int where)
 	return 0;
 }
 
-int rtas_read_config(struct pci_dn *pdn, int where, int size, u32 *val)
+static int rtas_read_raw_config(unsigned long buid, int busno, unsigned int devfn,
+				int where, int size, u32 *val)
 {
 	int returnval = -1;
-	unsigned long buid, addr;
+	unsigned long addr = rtas_config_addr(busno, devfn, where);
+	int ret;
+
+	if (buid) {
+		ret = rtas_call(ibm_read_pci_config, 4, 2, &returnval,
+				addr, BUID_HI(buid), BUID_LO(buid), size);
+	} else {
+		ret = rtas_call(read_pci_config, 2, 2, &returnval, addr, size);
+	}
+	*val = returnval;
+
+	return ret;
+}
+
+int rtas_read_config(struct pci_dn *pdn, int where, int size, u32 *val)
+{
 	int ret;
 
 	if (!pdn)
@@ -58,16 +74,8 @@ int rtas_read_config(struct pci_dn *pdn, int where, int size, u32 *val)
 		return PCIBIOS_SET_FAILED;
 #endif
 
-	addr = rtas_config_addr(pdn->busno, pdn->devfn, where);
-	buid = pdn->phb->buid;
-	if (buid) {
-		ret = rtas_call(ibm_read_pci_config, 4, 2, &returnval,
-				addr, BUID_HI(buid), BUID_LO(buid), size);
-	} else {
-		ret = rtas_call(read_pci_config, 2, 2, &returnval, addr, size);
-	}
-	*val = returnval;
-
+	ret = rtas_read_raw_config(pdn->phb->buid, pdn->busno, pdn->devfn,
+				   where, size, val);
 	if (ret)
 		return PCIBIOS_DEVICE_NOT_FOUND;
 
@@ -85,18 +93,44 @@ static int rtas_pci_read_config(struct pci_bus *bus,
 
 	pdn = pci_get_pdn_by_devfn(bus, devfn);
 
-	/* Validity of pdn is checked in here */
-	ret = rtas_read_config(pdn, where, size, val);
-	if (*val == EEH_IO_ERROR_VALUE(size) &&
-	    eeh_dev_check_failure(pdn_to_eeh_dev(pdn)))
-		return PCIBIOS_DEVICE_NOT_FOUND;
+	if (pdn) {
+		/* Validity of pdn is checked in here */
+		ret = rtas_read_config(pdn, where, size, val);
+
+		if (*val == EEH_IO_ERROR_VALUE(size) &&
+		    eeh_dev_check_failure(pdn_to_eeh_dev(pdn)))
+			ret = PCIBIOS_DEVICE_NOT_FOUND;
+	} else {
+		struct pci_controller *phb = pci_bus_to_host(bus);
+
+		ret = rtas_read_raw_config(phb->buid, bus->number, devfn,
+					   where, size, val);
+	}
 
 	return ret;
 }
 
+static int rtas_write_raw_config(unsigned long buid, int busno, unsigned int devfn,
+				 int where, int size, u32 val)
+{
+	unsigned long addr = rtas_config_addr(busno, devfn, where);
+	int ret;
+
+	if (buid) {
+		ret = rtas_call(ibm_write_pci_config, 5, 1, NULL, addr,
+				BUID_HI(buid), BUID_LO(buid), size, (ulong)val);
+	} else {
+		ret = rtas_call(write_pci_config, 3, 1, NULL, addr, size, (ulong)val);
+	}
+
+	if (ret)
+		return PCIBIOS_DEVICE_NOT_FOUND;
+
+	return PCIBIOS_SUCCESSFUL;
+}
+
 int rtas_write_config(struct pci_dn *pdn, int where, int size, u32 val)
 {
-	unsigned long buid, addr;
 	int ret;
 
 	if (!pdn)
@@ -109,15 +143,8 @@ int rtas_write_config(struct pci_dn *pdn, int where, int size, u32 val)
 		return PCIBIOS_SET_FAILED;
 #endif
 
-	addr = rtas_config_addr(pdn->busno, pdn->devfn, where);
-	buid = pdn->phb->buid;
-	if (buid) {
-		ret = rtas_call(ibm_write_pci_config, 5, 1, NULL, addr,
-			BUID_HI(buid), BUID_LO(buid), size, (ulong) val);
-	} else {
-		ret = rtas_call(write_pci_config, 3, 1, NULL, addr, size, (ulong)val);
-	}
-
+	ret = rtas_write_raw_config(pdn->phb->buid, pdn->busno, pdn->devfn,
+				    where, size, val);
 	if (ret)
 		return PCIBIOS_DEVICE_NOT_FOUND;
 
@@ -128,12 +155,20 @@ static int rtas_pci_write_config(struct pci_bus *bus,
 				 unsigned int devfn,
 				 int where, int size, u32 val)
 {
-	struct pci_dn *pdn;
+	struct pci_dn *pdn = pci_get_pdn_by_devfn(bus, devfn);
+	int ret;
 
-	pdn = pci_get_pdn_by_devfn(bus, devfn);
+	if (pdn) {
+		/* Validity of pdn is checked in here. */
+		ret = rtas_write_config(pdn, where, size, val);
+	} else {
+		struct pci_controller *phb = pci_bus_to_host(bus);
 
-	/* Validity of pdn is checked in here. */
-	return rtas_write_config(pdn, where, size, val);
+		ret = rtas_write_raw_config(phb->buid, bus->number, devfn,
+					    where, size, val);
+	}
+
+	return ret;
 }
 
 static struct pci_ops rtas_pci_ops = {
