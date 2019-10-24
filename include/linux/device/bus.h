@@ -253,6 +253,8 @@ int bus_for_each_drv(struct bus_type *bus, struct device_driver *start,
 void bus_sort_breadthfirst(struct bus_type *bus,
 			   int (*compare)(const struct device *a,
 					  const struct device *b));
+extern int bus_add_device(struct device *dev);
+
 /*
  * Bus notifiers: Get notified of addition/removal of devices
  * and binding/unbinding of drivers to devices.
