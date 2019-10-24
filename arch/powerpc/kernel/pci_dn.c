@@ -20,6 +20,9 @@
 #include <asm/firmware.h>
 #include <asm/eeh.h>
 
+static struct pci_dn *pci_create_pdn_from_dev(struct pci_dev *pdev,
+					      struct pci_dn *parent);
+
 /*
  * The function is used to find the firmware data of one
  * specific PCI device, which is attached to the indicated
@@ -52,6 +55,9 @@ static struct pci_dn *pci_bus_to_pdn(struct pci_bus *bus)
 	dn = pci_bus_to_OF_node(pbus);
 	pdn = dn ? PCI_DN(dn) : NULL;
 
+	if (!pdn && pbus->self)
+		pdn = pbus->self->dev.archdata.pci_data;
+
 	return pdn;
 }
 
@@ -61,10 +67,13 @@ struct pci_dn *pci_get_pdn_by_devfn(struct pci_bus *bus,
 	struct device_node *dn = NULL;
 	struct pci_dn *parent, *pdn;
 	struct pci_dev *pdev = NULL;
+	bool pdev_found = false;
 
 	/* Fast path: fetch from PCI device */
 	list_for_each_entry(pdev, &bus->devices, bus_list) {
 		if (pdev->devfn == devfn) {
+			pdev_found = true;
+
 			if (pdev->dev.archdata.pci_data)
 				return pdev->dev.archdata.pci_data;
 
@@ -72,6 +81,9 @@ struct pci_dn *pci_get_pdn_by_devfn(struct pci_bus *bus,
 			break;
 		}
 	}
+
+	if (!pdev_found)
+		pdev = NULL;
 
 	/* Fast path: fetch from device node */
 	pdn = dn ? PCI_DN(dn) : NULL;
@@ -85,9 +97,12 @@ struct pci_dn *pci_get_pdn_by_devfn(struct pci_bus *bus,
 
 	list_for_each_entry(pdn, &parent->child_list, list) {
 		if (pdn->busno == bus->number &&
-                    pdn->devfn == devfn)
-                        return pdn;
-        }
+		    pdn->devfn == devfn) {
+			if (pdev)
+				pdev->dev.archdata.pci_data = pdn;
+			return pdn;
+		}
+	}
 
 	return NULL;
 }
@@ -117,17 +132,17 @@ struct pci_dn *pci_get_pdn(struct pci_dev *pdev)
 
 	list_for_each_entry(pdn, &parent->child_list, list) {
 		if (pdn->busno == pdev->bus->number &&
-		    pdn->devfn == pdev->devfn)
+		    pdn->devfn == pdev->devfn) {
+			pdev->dev.archdata.pci_data = pdn;
 			return pdn;
+		}
 	}
 
-	return NULL;
+	return pci_create_pdn_from_dev(pdev, parent);
 }
 
-#ifdef CONFIG_PCI_IOV
-static struct pci_dn *add_one_sriov_vf_pdn(struct pci_dn *parent,
-					   int vf_index,
-					   int busno, int devfn)
+static struct pci_dn *pci_alloc_pdn(struct pci_dn *parent,
+				    int busno, int devfn)
 {
 	struct pci_dn *pdn;
 
@@ -143,7 +158,6 @@ static struct pci_dn *add_one_sriov_vf_pdn(struct pci_dn *parent,
 	pdn->parent = parent;
 	pdn->busno = busno;
 	pdn->devfn = devfn;
-	pdn->vf_index = vf_index;
 	pdn->pe_number = IODA_INVALID_PE;
 	INIT_LIST_HEAD(&pdn->child_list);
 	INIT_LIST_HEAD(&pdn->list);
@@ -152,6 +166,52 @@ static struct pci_dn *add_one_sriov_vf_pdn(struct pci_dn *parent,
 	return pdn;
 }
 
+static struct pci_dn *pci_create_pdn_from_dev(struct pci_dev *pdev,
+					      struct pci_dn *parent)
+{
+	struct pci_dn *pdn = NULL;
+	u32 class_code;
+	u16 device_id;
+	u16 vendor_id;
+
+	if (!parent)
+		return NULL;
+
+	pdn = pci_alloc_pdn(parent, pdev->bus->busn_res.start, pdev->devfn);
+	pci_info(pdev, "Create a new pdn for devfn %2x\n", pdev->devfn / 8);
+
+	if (!pdn) {
+		pci_err(pdev, "%s: Failed to allocate pdn\n", __func__);
+		return NULL;
+	}
+
+	#ifdef CONFIG_EEH
+	if (!eeh_dev_init(pdn)) {
+		kfree(pdn);
+		pci_err(pdev, "%s: Failed to allocate edev\n", __func__);
+		return NULL;
+	}
+	#endif /* CONFIG_EEH */
+
+	pci_bus_read_config_word(pdev->bus, pdev->devfn,
+				 PCI_VENDOR_ID, &vendor_id);
+	pdn->vendor_id = vendor_id;
+
+	pci_bus_read_config_word(pdev->bus, pdev->devfn,
+				 PCI_DEVICE_ID, &device_id);
+	pdn->device_id = device_id;
+
+	pci_bus_read_config_dword(pdev->bus, pdev->devfn,
+				  PCI_CLASS_REVISION, &class_code);
+	class_code >>= 8;
+	pdn->class_code = class_code;
+
+	pdev->dev.archdata.pci_data = pdn;
+
+	return pdn;
+}
+
+#ifdef CONFIG_PCI_IOV
 struct pci_dn *add_sriov_vf_pdns(struct pci_dev *pdev)
 {
 	struct pci_dn *parent, *pdn;
@@ -174,14 +234,17 @@ struct pci_dn *add_sriov_vf_pdns(struct pci_dev *pdev)
 	for (i = 0; i < pci_sriov_get_totalvfs(pdev); i++) {
 		struct eeh_dev *edev __maybe_unused;
 
-		pdn = add_one_sriov_vf_pdn(parent, i,
-					   pci_iov_virtfn_bus(pdev, i),
-					   pci_iov_virtfn_devfn(pdev, i));
+		pdn = pci_alloc_pdn(parent,
+				    pci_iov_virtfn_bus(pdev, i),
+				    pci_iov_virtfn_devfn(pdev, i));
+
 		if (!pdn) {
 			dev_warn(&pdev->dev, "%s: Cannot create firmware data for VF#%d\n",
 				 __func__, i);
 			return NULL;
 		}
+
+		pdn->vf_index = i;
 
 #ifdef CONFIG_EEH
 		/* Create the EEH device for the VF */
