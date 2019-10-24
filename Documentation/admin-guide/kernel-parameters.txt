@@ -3670,6 +3670,9 @@
 		force_floating	[S390] Force usage of floating interrupts.
 		nomio		[S390] Do not use MIO instructions.
 		no_movable_bars	Don't allow BARs to be moved during hotplug
+		movable_buses	Prefer bus renaming over the number reserving. This
+				inflicts the deleting+recreating of sysfs and procfs
+				entries.
 
 	pcie_aspm=	[PCIE] Forcibly enable or disable PCIe Active State Power
 			Management.

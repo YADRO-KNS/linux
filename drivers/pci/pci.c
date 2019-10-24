@@ -80,6 +80,7 @@ int pci_domains_supported = 1;
 #endif
 
 bool pci_can_move_bars = true;
+bool pci_movable_buses;
 
 #define DEFAULT_CARDBUS_IO_SIZE		(256)
 #define DEFAULT_CARDBUS_MEM_SIZE	(64*1024*1024)
@@ -6557,6 +6558,8 @@ static int __init pci_setup(char *str)
 				disable_acs_redir_param = str + 18;
 			} else if (!strncmp(str, "no_movable_bars", 15)) {
 				pci_can_move_bars = false;
+			} else if (!strncmp(str, "movable_buses", 13)) {
+				pci_movable_buses = true;
 			} else {
 				pr_err("PCI: Unknown option `%s'\n", str);
 			}

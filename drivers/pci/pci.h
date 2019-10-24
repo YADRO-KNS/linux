@@ -296,6 +296,7 @@ void pci_bus_put(struct pci_bus *bus);
 bool pci_dev_bar_fixed(struct pci_dev *dev, struct resource *res);
 bool pci_dev_bar_enabled(const struct pci_dev *dev, int idx);
 bool pci_bus_check_bars_assigned(struct pci_bus *bus, bool complete_set);
+extern bool pci_movable_buses;
 
 static inline void pci_set_fixed_range(struct resource *res)
 {
