@@ -254,6 +254,8 @@ void bus_sort_breadthfirst(struct bus_type *bus,
 			   int (*compare)(const struct device *a,
 					  const struct device *b));
 extern int bus_add_device(struct device *dev);
+extern int device_add_class_symlinks(struct device *dev);
+extern void device_remove_class_symlinks(struct device *dev);
 
 /*
  * Bus notifiers: Get notified of addition/removal of devices
