@@ -223,6 +223,17 @@
 
 &i2c13 {
 	status = "okay";
+
+	iio-proximity@13 {
+		compatible = "vishay,vcnl3020";
+		reg = <0x13>;
+
+		proximity-rate = <0>;
+		led-current = <0x14>;
+		threshold = <3000>;
+		count-exceed = <0>;
+	};
+
 };
 
 &vuart {
