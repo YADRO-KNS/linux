@@ -882,6 +882,10 @@ static void pbus_size_io(struct pci_bus *bus, resource_size_t min_size,
 	resource_size_t children_add_size = 0;
 	resource_size_t min_align, align;
 
+	struct resource *fixed_range = &bus->fixed_range[0];
+	resource_size_t fixed_size = pci_fixed_range_valid(fixed_range) ?
+		resource_size(fixed_range) : 0;
+
 	if (!b_res)
 		return;
 
@@ -916,6 +920,9 @@ static void pbus_size_io(struct pci_bus *bus, resource_size_t min_size,
 				children_add_size += get_res_add_size(realloc_head, r);
 		}
 	}
+
+	if (size1 < fixed_size)
+		size1 = fixed_size;
 
 	size0 = calculate_iosize(size, min_size, size1, 0, 0,
 			resource_size(b_res), min_align);
@@ -998,6 +1005,14 @@ static int pbus_size_mem(struct pci_bus *bus, unsigned long mask,
 	resource_size_t children_add_size = 0;
 	resource_size_t children_add_align = 0;
 	resource_size_t add_align = 0;
+	int idx = pci_get_bridge_resource_idx(b_res);
+
+	struct resource *fixed_range = &bus->fixed_range[idx];
+	resource_size_t fixed_size = pci_fixed_range_valid(fixed_range) ?
+		resource_size(fixed_range) : 0;
+
+	if (min_size < fixed_size)
+		min_size = fixed_size;
 
 	if (!b_res)
 		return -ENOSPC;
@@ -1017,7 +1032,7 @@ static int pbus_size_mem(struct pci_bus *bus, unsigned long mask,
 			struct resource *r = &dev->resource[i];
 			resource_size_t r_size;
 
-			if (r->parent || (r->flags & IORESOURCE_PCI_FIXED) ||
+			if (r->parent ||
 			    !pci_dev_bar_enabled(dev, i) ||
 			    ((r->flags & mask) != type &&
 			     (r->flags & mask) != type2 &&
