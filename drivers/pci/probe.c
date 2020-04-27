@@ -613,6 +613,10 @@ static struct pci_bus *pci_alloc_bus(struct pci_bus *parent)
 	b->fixed_range[1].flags = IORESOURCE_MEM;
 	b->fixed_range[2].flags = IORESOURCE_MEM | IORESOURCE_PREFETCH;
 
+	b->realloc_range[0].flags = IORESOURCE_IO;
+	b->realloc_range[1].flags = IORESOURCE_MEM;
+	b->realloc_range[2].flags = IORESOURCE_MEM | IORESOURCE_PREFETCH;
+
 	return b;
 }
 

@@ -1815,6 +1815,90 @@ static enum enable_type pci_realloc_detect(struct pci_bus *bus,
 #endif
 
 /*
+ * Calculate the address margins where the bridge windows may be allocated to fit all
+ * the fixed BARs beneath.
+ */
+static void pci_bus_update_realloc_range(struct pci_bus *bus)
+{
+	struct pci_dev *dev;
+	struct pci_bus *parent = bus->parent;
+	int idx;
+
+	if (!pci_can_move_bars)
+		return;
+
+	list_for_each_entry(dev, &bus->devices, bus_list)
+		if (dev->subordinate)
+			pci_bus_update_realloc_range(dev->subordinate);
+
+	if (!parent || !bus->self)
+		return;
+
+	for (idx = 0; idx < PCI_BRIDGE_RESOURCE_NUM; ++idx) {
+		struct resource *fixed_range = &bus->fixed_range[idx];
+		struct resource *realloc_range = &bus->realloc_range[idx];
+		resource_size_t window_size = resource_size(bus->resource[idx]);
+		resource_size_t realloc_start, realloc_end;
+
+		pci_set_fixed_range(realloc_range);
+
+		/* Check if there any fixed BARs under the bridge */
+		if (!pci_fixed_range_valid(fixed_range))
+			continue;
+
+		/* The lowest possible address where the bridge window can start */
+		realloc_start = fixed_range->end - window_size + 1;
+		if (realloc_start > fixed_range->start)
+			realloc_start = fixed_range->start;
+
+		/* The highest possible address where the bridge window can end */
+		realloc_end = fixed_range->start + window_size - 1;
+		if (realloc_end < fixed_range->end)
+			realloc_end = fixed_range->end;
+
+		/*
+		 * Check that realloc range doesn't intersect with hard fixed ranges
+		 * of neighboring bridges
+		 */
+		list_for_each_entry(dev, &parent->devices, bus_list) {
+			struct pci_bus *neighbor = dev->subordinate;
+			struct resource *n_imm_range;
+			int i;
+
+			if (neighbor == bus)
+				continue;
+
+			for (i = 0; i < PCI_BRIDGE_RESOURCE_NUM; ++i) {
+				struct resource *nr = &dev->resource[i];
+
+				if (!nr->flags ||
+				    !pci_dev_bar_fixed(dev, nr))
+					continue;
+
+				if (nr->end < fixed_range->start &&
+				    nr->end > realloc_start)
+					realloc_start = nr->end;
+			}
+
+			if (!neighbor)
+				continue;
+
+			n_imm_range = &neighbor->fixed_range[idx];
+
+			if (!pci_fixed_range_valid(n_imm_range))
+				continue;
+
+			if (n_imm_range->end < fixed_range->start &&
+			    n_imm_range->end > realloc_start)
+				realloc_start = n_imm_range->end;
+		}
+
+		realloc_range->start = realloc_start;
+		realloc_range->end = realloc_end;
+	}
+}
+
+/*
  * First try will not touch PCI bridge res.
  * Second and later try will clear small leaf bridge res.
  * Will stop till to the max depth if can not find good one.
@@ -1833,6 +1917,7 @@ void pci_assign_unassigned_root_bus_resources(struct pci_bus *bus)
 
 	if (pci_can_move_bars) {
 		__pci_bus_size_bridges(bus, NULL);
+		pci_bus_update_realloc_range(bus);
 		__pci_bus_assign_resources(bus, NULL, NULL);
 
 		goto dump;
