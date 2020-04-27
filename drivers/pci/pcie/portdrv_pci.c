@@ -205,6 +205,14 @@ static const struct pci_error_handlers pcie_portdrv_err_handler = {
 	.resume = pcie_portdrv_err_resume,
 };
 
+static void pcie_portdrv_rescan_prepare(struct pci_dev *pdev)
+{
+}
+
+static void pcie_portdrv_rescan_done(struct pci_dev *pdev)
+{
+}
+
 static struct pci_driver pcie_portdriver = {
 	.name		= "pcieport",
 	.id_table	= &port_pci_ids[0],
@@ -214,6 +222,9 @@ static struct pci_driver pcie_portdriver = {
 	.shutdown	= pcie_portdrv_remove,
 
 	.err_handler	= &pcie_portdrv_err_handler,
+
+	.rescan_prepare	= pcie_portdrv_rescan_prepare,
+	.rescan_done	= pcie_portdrv_rescan_done,
 
 	.driver.pm	= PCIE_PORTDRV_PM_OPS,
 };
