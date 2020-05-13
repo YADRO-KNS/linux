@@ -1305,6 +1305,9 @@ unsigned int pci_rescan_bus(struct pci_bus *bus);
 void pci_lock_rescan_remove(void);
 void pci_unlock_rescan_remove(void);
 
+void pcibios_root_bus_rescan_prepare(struct pci_bus *root);
+void pcibios_root_bus_rescan_done(struct pci_bus *root);
+
 /* Vital Product Data routines */
 ssize_t pci_read_vpd(struct pci_dev *dev, loff_t pos, size_t count, void *buf);
 ssize_t pci_write_vpd(struct pci_dev *dev, loff_t pos, size_t count, const void *buf);

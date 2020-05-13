@@ -2781,6 +2781,8 @@ static void pnv_pci_release_device(struct pci_dev *pdev)
 	if (!pdn || pdn->pe_number == IODA_INVALID_PE)
 		return;
 
+	iommu_del_device(&pdev->dev);
+
 #ifdef CONFIG_PCI_IOV
 	/*
 	 * FIXME: Try move this to sriov_disable(). It's here since we allocate

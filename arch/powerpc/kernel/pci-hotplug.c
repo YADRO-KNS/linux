@@ -148,3 +148,49 @@ void pci_hp_add_devices(struct pci_bus *bus)
 	pcibios_finish_adding_to_bus(bus);
 }
 EXPORT_SYMBOL_GPL(pci_hp_add_devices);
+
+static void pci_hp_bus_rescan_prepare(struct pci_dn *parent)
+{
+	struct pci_dn *pdn;
+
+	if (!parent)
+		return;
+
+	list_for_each_entry(pdn, &parent->child_list, list) {
+		struct pci_dev *dev = pci_get_domain_bus_and_slot(
+			pci_domain_nr(pdn->phb->bus),
+			pdn->busno, pdn->devfn);
+
+		if (!dev)
+			continue;
+
+		pci_hp_bus_rescan_prepare(pdn);
+
+		if (pdn->phb->controller_ops.release_device)
+			pdn->phb->controller_ops.release_device(dev);
+	}
+}
+
+static void pci_hp_bus_rescan_done(struct pci_bus *bus)
+{
+	struct pci_dev *dev;
+
+	list_for_each_entry(dev, &bus->devices, bus_list) {
+		struct pci_bus *child = dev->subordinate;
+
+		pcibios_bus_add_device(dev);
+
+		if (child)
+			pci_hp_bus_rescan_done(child);
+	}
+}
+
+void pcibios_root_bus_rescan_prepare(struct pci_bus *root)
+{
+	pci_hp_bus_rescan_prepare(pci_bus_to_pdn(root));
+}
+
+void pcibios_root_bus_rescan_done(struct pci_bus *root)
+{
+	pci_hp_bus_rescan_done(root);
+}
