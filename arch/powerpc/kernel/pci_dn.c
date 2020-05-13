@@ -597,6 +597,15 @@ void pci_devs_phb_init_dynamic(struct pci_controller *phb)
 		phb->pci_data = pdn;
 	}
 
+	if (of_get_property(dn, "ibm,supported-movable-bdfs", NULL)) {
+		pci_add_flags(PCI_REASSIGN_ALL_BUS);
+		return;
+	}
+
+	if (pci_can_move_buses)
+		pr_warn("Firmware doesn't support movable buses, disabling\n");
+	pci_can_move_buses = false;
+
 	/* Update dn->phb ptrs for new phb and children devices */
 	pci_traverse_device_nodes(dn, add_pdn, phb);
 }
