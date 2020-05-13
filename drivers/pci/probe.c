@@ -2856,6 +2856,14 @@ struct pci_dev *pci_scan_single_device(struct pci_bus *bus, int devfn)
 
 	pci_device_add(dev, bus);
 
+	if (pci_can_move_buses && dev->hdr_type == PCI_HEADER_TYPE_BRIDGE) {
+		u32 buses;
+
+		pci_read_config_dword(dev, PCI_PRIMARY_BUS, &buses);
+		buses &= 0xff000000;
+		pci_write_config_dword(dev, PCI_PRIMARY_BUS, buses);
+	}
+
 	return dev;
 }
 EXPORT_SYMBOL(pci_scan_single_device);
