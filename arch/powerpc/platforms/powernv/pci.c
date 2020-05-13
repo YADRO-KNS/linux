@@ -944,8 +944,12 @@ void __init pnv_pci_init(void)
 	 * without kernel changes (and portbus binding breaks pnv_php). The
 	 * other services also require some thinking about how we're going
 	 * to integrate them.
+	 *
+	 * But when the EEH is disabled and the kernel is allowed to reassign
+	 * bus numbers, the portdrv can work just fine.
 	 */
-	pcie_ports_disabled = true;
+	if (eeh_enabled() && !pci_has_flag(PCI_REASSIGN_ALL_BUS))
+		pcie_ports_disabled = true;
 #endif
 
 	/* Look for IODA IO-Hubs. */
