@@ -650,30 +650,28 @@ static void pnv_pci_config_check_eeh(struct pci_dn *pdn)
 	}
 }
 
-int pnv_pci_cfg_read(struct pci_dn *pdn,
-		     int where, int size, u32 *val)
+static int pnv_pci_cfg_read_raw(u64 phb_id, int busno, unsigned int devfn,
+				int where, int size, u32 *val)
 {
-	struct pnv_phb *phb = pdn->phb->private_data;
-	u32 bdfn = (pdn->busno << 8) | pdn->devfn;
+	u32 bdfn = (busno << 8) | devfn;
 	s64 rc;
 
 	switch (size) {
 	case 1: {
 		u8 v8;
-		rc = opal_pci_config_read_byte(phb->opal_id, bdfn, where, &v8);
+		rc = opal_pci_config_read_byte(phb_id, bdfn, where, &v8);
 		*val = (rc == OPAL_SUCCESS) ? v8 : 0xff;
 		break;
 	}
 	case 2: {
 		__be16 v16;
-		rc = opal_pci_config_read_half_word(phb->opal_id, bdfn, where,
-						   &v16);
+		rc = opal_pci_config_read_half_word(phb_id, bdfn, where, &v16);
 		*val = (rc == OPAL_SUCCESS) ? be16_to_cpu(v16) : 0xffff;
 		break;
 	}
 	case 4: {
 		__be32 v32;
-		rc = opal_pci_config_read_word(phb->opal_id, bdfn, where, &v32);
+		rc = opal_pci_config_read_word(phb_id, bdfn, where, &v32);
 		*val = (rc == OPAL_SUCCESS) ? be32_to_cpu(v32) : 0xffffffff;
 		break;
 	}
@@ -682,33 +680,50 @@ int pnv_pci_cfg_read(struct pci_dn *pdn,
 	}
 
 	pr_devel("%s: bus: %x devfn: %x +%x/%x -> %08x\n",
-		 __func__, pdn->busno, pdn->devfn, where, size, *val);
+		 __func__, busno, devfn, where, size, *val);
 	return PCIBIOS_SUCCESSFUL;
 }
 
-int pnv_pci_cfg_write(struct pci_dn *pdn,
-		      int where, int size, u32 val)
+static int pnv_pci_cfg_write_raw(u64 phb_id, int busno, unsigned int devfn,
+				 int where, int size, u32 val)
 {
-	struct pnv_phb *phb = pdn->phb->private_data;
-	u32 bdfn = (pdn->busno << 8) | pdn->devfn;
+	u32 bdfn = (busno << 8) | devfn;
 
 	pr_devel("%s: bus: %x devfn: %x +%x/%x -> %08x\n",
-		 __func__, pdn->busno, pdn->devfn, where, size, val);
+		 __func__, busno, devfn, where, size, val);
 	switch (size) {
 	case 1:
-		opal_pci_config_write_byte(phb->opal_id, bdfn, where, val);
+		opal_pci_config_write_byte(phb_id, bdfn, where, val);
 		break;
 	case 2:
-		opal_pci_config_write_half_word(phb->opal_id, bdfn, where, val);
+		opal_pci_config_write_half_word(phb_id, bdfn, where, val);
 		break;
 	case 4:
-		opal_pci_config_write_word(phb->opal_id, bdfn, where, val);
+		opal_pci_config_write_word(phb_id, bdfn, where, val);
 		break;
 	default:
 		return PCIBIOS_FUNC_NOT_SUPPORTED;
 	}
 
 	return PCIBIOS_SUCCESSFUL;
+}
+
+int pnv_pci_cfg_read(struct pci_dn *pdn,
+		     int where, int size, u32 *val)
+{
+	struct pnv_phb *phb = pdn->phb->private_data;
+
+	return pnv_pci_cfg_read_raw(phb->opal_id, pdn->busno, pdn->devfn,
+				    where, size, val);
+}
+
+int pnv_pci_cfg_write(struct pci_dn *pdn,
+		      int where, int size, u32 val)
+{
+	struct pnv_phb *phb = pdn->phb->private_data;
+
+	return pnv_pci_cfg_write_raw(phb->opal_id, pdn->busno, pdn->devfn,
+				     where, size, val);
 }
 
 #if CONFIG_EEH
@@ -746,13 +761,15 @@ static int pnv_pci_read_config(struct pci_bus *bus,
 			       int where, int size, u32 *val)
 {
 	struct pci_dn *pdn;
-	struct pnv_phb *phb;
+	struct pci_controller *hose = pci_bus_to_host(bus);
+	struct pnv_phb *phb = hose->private_data;
 	int ret;
 
 	*val = 0xFFFFFFFF;
 	pdn = pci_get_pdn_by_devfn(bus, devfn);
 	if (!pdn)
-		return PCIBIOS_DEVICE_NOT_FOUND;
+		return pnv_pci_cfg_read_raw(phb->opal_id, bus->number, devfn,
+					    where, size, val);
 
 	if (!pnv_pci_cfg_check(pdn))
 		return PCIBIOS_DEVICE_NOT_FOUND;
@@ -775,12 +792,14 @@ static int pnv_pci_write_config(struct pci_bus *bus,
 				int where, int size, u32 val)
 {
 	struct pci_dn *pdn;
-	struct pnv_phb *phb;
+	struct pci_controller *hose = pci_bus_to_host(bus);
+	struct pnv_phb *phb = hose->private_data;
 	int ret;
 
 	pdn = pci_get_pdn_by_devfn(bus, devfn);
 	if (!pdn)
-		return PCIBIOS_DEVICE_NOT_FOUND;
+		return pnv_pci_cfg_write_raw(phb->opal_id, bus->number, devfn,
+					     where, size, val);
 
 	if (!pnv_pci_cfg_check(pdn))
 		return PCIBIOS_DEVICE_NOT_FOUND;
