@@ -1219,12 +1219,99 @@ static void pci_expand_parent_subordinate(struct pci_bus *bus, int busnr)
 	pci_expand_parent_subordinate(bus->parent, busnr);
 }
 
+static void pci_buses_remove_sysfs(int domain, int busnr, int max_bus_number)
+{
+	struct pci_bus *bus;
+	struct pci_dev *dev = NULL;
+
+	bus = pci_find_bus(domain, busnr);
+	if (!bus)
+		return;
+
+	if (busnr < max_bus_number)
+		pci_buses_remove_sysfs(domain, busnr + 1, max_bus_number);
+
+	list_for_each_entry(dev, &bus->devices, bus_list) {
+		device_remove_class_symlinks(&dev->dev);
+		pci_remove_sysfs_dev_files(dev);
+		pci_proc_detach_device(dev);
+		bus_disconnect_device(&dev->dev);
+	}
+
+	device_remove_class_symlinks(&bus->dev);
+	pci_proc_detach_bus(bus);
+}
+
+static void pci_buses_create_sysfs(int domain, int busnr, int max_bus_number)
+{
+	struct pci_bus *bus;
+	struct pci_dev *dev = NULL;
+
+	bus = pci_find_bus(domain, busnr);
+	if (!bus)
+		return;
+
+	device_add_class_symlinks(&bus->dev);
+
+	list_for_each_entry(dev, &bus->devices, bus_list) {
+		bus_add_device(&dev->dev);
+		if (pci_dev_is_added(dev)) {
+			pci_proc_attach_device(dev);
+			pci_create_sysfs_dev_files(dev);
+			device_add_class_symlinks(&dev->dev);
+		}
+	}
+
+	if (busnr < max_bus_number)
+		pci_buses_create_sysfs(domain, busnr + 1, max_bus_number);
+}
+
+static void pci_rename_bus(struct pci_bus *bus, const char *new_bus_name)
+{
+	struct class *class;
+	int err;
+
+	class = bus->dev.class;
+	bus->dev.class = NULL;
+	err = device_rename(&bus->dev, new_bus_name);
+	bus->dev.class = class;
+}
+
+static void pci_rename_bus_devices(struct pci_bus *bus, const int domain,
+				   const int new_busnr)
+{
+	struct pci_dev *dev = NULL;
+
+	list_for_each_entry(dev, &bus->devices, bus_list) {
+		char old_name[64];
+		char new_name[64];
+		struct class *class;
+		int err;
+		int i;
+
+		strncpy(old_name, dev_name(&dev->dev), sizeof(old_name));
+		sprintf(new_name, "%04x:%02x:%02x.%d", domain, new_busnr,
+			PCI_SLOT(dev->devfn), PCI_FUNC(dev->devfn));
+		class = dev->dev.class;
+		dev->dev.class = NULL;
+		err = device_rename(&dev->dev, new_name);
+		dev->dev.class = class;
+
+		for (i = 0; i < PCI_BRIDGE_RESOURCES; i++)
+			dev->resource[i].name = pci_name(dev);
+	}
+}
+
 static void pci_do_move_buses(const int domain, int busnr, int first_moved_busnr,
 			      int delta, const struct resource *valid_range)
 {
 	struct pci_bus *bus;
-	int subordinate;
+	int subordinate, old_primary;
 	u32 old_buses, buses;
+	char old_bus_name[64];
+	char new_bus_name[64];
+	struct resource old_res;
+	int new_busnr = busnr + delta;
 
 	if (busnr < valid_range->start || busnr > valid_range->end)
 		return;
@@ -1233,11 +1320,21 @@ static void pci_do_move_buses(const int domain, int busnr, int first_moved_busnr
 	if (!bus)
 		return;
 
+	old_primary = bus->primary;
+	strncpy(old_bus_name, dev_name(&bus->dev), sizeof(old_bus_name));
+	sprintf(new_bus_name, "%04x:%02x", domain, new_busnr);
+
 	if (delta > 0) {
 		pci_do_move_buses(domain, busnr + 1, first_moved_busnr,
 				  delta, valid_range);
+		pci_rename_bus_devices(bus, domain, new_busnr);
+		pci_rename_bus(bus, new_bus_name);
+	} else {
+		pci_rename_bus(bus, new_bus_name);
+		pci_rename_bus_devices(bus, domain, new_busnr);
 	}
 
+	memcpy(&old_res, &bus->busn_res, sizeof(old_res));
 	bus->number += delta;
 	if (bus->busn_res.start == bus->busn_res.end)
 		bus->busn_res.end += delta;
@@ -1258,6 +1355,10 @@ static void pci_do_move_buses(const int domain, int busnr, int first_moved_busnr
 	buses |= (unsigned int)(bus->number << 8);
 	buses |= (unsigned int)(subordinate << 16);
 	pci_write_config_dword(bus->self, PCI_PRIMARY_BUS, buses);
+
+	dev_warn(&bus->dev, "Renamed bus %s (%02x-%pR) to %s (%02x-%pR)\n",
+		 old_bus_name, old_primary, &old_res,
+		 new_bus_name, bus->primary, &bus->busn_res);
 
 	if (delta < 0)
 		pci_do_move_buses(domain, busnr + 1, first_moved_busnr,
@@ -1319,8 +1420,10 @@ static int pci_move_buses(int domain, int busnr, int delta,
 		}
 	}
 
+	pci_buses_remove_sysfs(domain, busnr, valid_range->end);
 	pci_do_move_buses(domain, busnr, busnr,
 			  delta, valid_range);
+	pci_buses_create_sysfs(domain, busnr + delta, valid_range->end);
 
 	return 0;
 }
