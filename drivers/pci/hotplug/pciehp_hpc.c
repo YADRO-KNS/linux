@@ -190,6 +190,10 @@ static void pcie_do_write_cmd(struct controller *ctrl, u16 cmd,
 	    (slot_ctrl_orig & CC_ERRATUM_MASK) == (slot_ctrl & CC_ERRATUM_MASK))
 		ctrl->cmd_busy = 0;
 
+	if (pdev->no_cmd_compl_wo_ccie &&
+	    !(ctrl->slot_ctrl & PCI_EXP_SLTCTL_CCIE))
+		ctrl->cmd_busy = 0;
+
 	/*
 	 * Optionally wait for the hardware to be ready for a new command,
 	 * indicating completion of the above issued command.
@@ -1004,6 +1008,18 @@ static void quirk_cmd_compl(struct pci_dev *pdev)
 			pdev->broken_cmd_compl = 1;
 	}
 }
+
+static void quirk_no_cmd_compl_wo_ccie(struct pci_dev *pdev)
+{
+	u32 slot_cap;
+
+	if (pci_is_pcie(pdev)) {
+		pcie_capability_read_dword(pdev, PCI_EXP_SLTCAP, &slot_cap);
+		if (slot_cap & PCI_EXP_SLTCAP_HPC &&
+		    !(slot_cap & PCI_EXP_SLTCAP_NCCS))
+			pdev->no_cmd_compl_wo_ccie = 1;
+	}
+}
 DECLARE_PCI_FIXUP_CLASS_EARLY(PCI_VENDOR_ID_INTEL, PCI_ANY_ID,
 			      PCI_CLASS_BRIDGE_PCI, 8, quirk_cmd_compl);
 DECLARE_PCI_FIXUP_CLASS_EARLY(PCI_VENDOR_ID_QCOM, 0x0400,
@@ -1012,3 +1028,5 @@ DECLARE_PCI_FIXUP_CLASS_EARLY(PCI_VENDOR_ID_QCOM, 0x0401,
 			      PCI_CLASS_BRIDGE_PCI, 8, quirk_cmd_compl);
 DECLARE_PCI_FIXUP_CLASS_EARLY(PCI_VENDOR_ID_HXT, 0x0401,
 			      PCI_CLASS_BRIDGE_PCI, 8, quirk_cmd_compl);
+DECLARE_PCI_FIXUP_CLASS_EARLY(PCI_VENDOR_ID_PLX, 0x8796,
+			      PCI_CLASS_BRIDGE_PCI, 8, quirk_no_cmd_compl_wo_ccie);
