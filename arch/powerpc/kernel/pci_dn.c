@@ -30,7 +30,7 @@ static struct pci_dn *pci_create_pdn_from_dev(struct pci_dev *pdev,
  * one of PF's bridge. For other devices, their firmware
  * data is linked to that of their bridge.
  */
-static struct pci_dn *pci_bus_to_pdn(struct pci_bus *bus)
+struct pci_dn *pci_bus_to_pdn(struct pci_bus *bus)
 {
 	struct pci_bus *pbus;
 	struct device_node *dn;
