@@ -177,8 +177,16 @@ int xhci_reset(struct xhci_hcd *xhci)
 	}
 
 	if ((state & STS_HALT) == 0) {
-		xhci_warn(xhci, "Host controller not halted, aborting reset.\n");
-		return 0;
+		/*
+		 * After a kexec TI TUSB73x0 might appear running as its USBSTS
+		 * and USBCMD registers return all zeroes. Doublecheck if host
+		 * is running from USBCMD RUN bit before bailing out.
+		 */
+		command = readl(&xhci->op_regs->command);
+		if (command & CMD_RUN) {
+			xhci_warn(xhci, "Host controller not halted, aborting reset.\n");
+			return 0;
+		}
 	}
 
 	xhci_dbg_trace(xhci, trace_xhci_dbg_init, "// Reset the HC");
@@ -789,6 +797,9 @@ void xhci_shutdown(struct usb_hcd *hcd)
 	xhci_dbg_trace(xhci, trace_xhci_dbg_init,
 			"xhci_shutdown completed - status = %x",
 			readl(&xhci->op_regs->status));
+
+	/* TI XHCI controllers do not come back after kexec without this hack */
+	pci_reset_function_locked(to_pci_dev(hcd->self.sysdev));
 }
 EXPORT_SYMBOL_GPL(xhci_shutdown);
 
@@ -5355,7 +5366,7 @@ int xhci_gen_setup(struct usb_hcd *hcd, xhci_get_quirks_t get_quirks)
 	/* Make sure the HC is halted. */
 	retval = xhci_halt(xhci);
 	if (retval)
-		return retval;
+		xhci_warn(xhci, "Continue with reset even if host appears running\n");
 
 	xhci_zero_64b_regs(xhci);
 
