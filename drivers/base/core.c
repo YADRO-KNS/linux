@@ -2793,7 +2793,7 @@ static void cleanup_glue_dir(struct device *dev, struct kobject *glue_dir)
 	mutex_unlock(&gdp_mutex);
 }
 
-static int device_add_class_symlinks(struct device *dev)
+int device_add_class_symlinks(struct device *dev)
 {
 	struct device_node *of_node = dev_of_node(dev);
 	int error;
@@ -2844,8 +2844,9 @@ out_devnode:
 	sysfs_remove_link(&dev->kobj, "of_node");
 	return error;
 }
+EXPORT_SYMBOL_GPL(device_add_class_symlinks);
 
-static void device_remove_class_symlinks(struct device *dev)
+void device_remove_class_symlinks(struct device *dev)
 {
 	if (dev_of_node(dev))
 		sysfs_remove_link(&dev->kobj, "of_node");
@@ -2862,6 +2863,7 @@ static void device_remove_class_symlinks(struct device *dev)
 #endif
 	sysfs_delete_link(&dev->class->p->subsys.kobj, &dev->kobj, dev_name(dev));
 }
+EXPORT_SYMBOL_GPL(device_remove_class_symlinks);
 
 /**
  * dev_set_name - set a device name
