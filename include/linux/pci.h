@@ -1444,6 +1444,7 @@ resource_size_t pcibios_window_alignment(struct pci_bus *bus,
 					 unsigned long type);
 
 extern bool pci_can_move_bars;
+extern bool pci_can_move_buses;
 
 #define PCI_VGA_STATE_CHANGE_BRIDGE (1 << 0)
 #define PCI_VGA_STATE_CHANGE_DECODES (1 << 1)

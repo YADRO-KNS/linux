@@ -1200,6 +1200,149 @@ static void pci_enable_crs(struct pci_dev *pdev)
 					 PCI_EXP_RTCTL_CRSSVE);
 }
 
+static void pci_expand_parent_subordinate(struct pci_bus *bus, int busnr)
+{
+	u32 buses;
+	int subordinate;
+
+	if (!bus || pci_is_root_bus(bus))
+		return;
+
+	pci_read_config_dword(bus->self, PCI_PRIMARY_BUS, &buses);
+	subordinate = (buses >> 16) & 0xff;
+	if (subordinate < busnr) {
+		buses = (buses & 0xff00ffff) | (busnr << 16);
+		pci_write_config_dword(bus->self, PCI_PRIMARY_BUS, buses);
+		bus->busn_res.end = busnr;
+	}
+
+	pci_expand_parent_subordinate(bus->parent, busnr);
+}
+
+static void pci_do_move_buses(const int domain, int busnr, int first_moved_busnr,
+			      int delta, const struct resource *valid_range)
+{
+	struct pci_bus *bus;
+	int subordinate;
+	u32 old_buses, buses;
+
+	if (busnr < valid_range->start || busnr > valid_range->end)
+		return;
+
+	bus = pci_find_bus(domain, busnr);
+	if (!bus)
+		return;
+
+	if (delta > 0) {
+		pci_do_move_buses(domain, busnr + 1, first_moved_busnr,
+				  delta, valid_range);
+	}
+
+	bus->number += delta;
+	if (bus->busn_res.start == bus->busn_res.end)
+		bus->busn_res.end += delta;
+	bus->busn_res.start += delta;
+
+	/* Children of moved buses must update their primary bus */
+	if (bus->primary >= first_moved_busnr)
+		bus->primary += delta;
+
+	pci_expand_parent_subordinate(bus->parent, bus->busn_res.end);
+
+	pci_read_config_dword(bus->self, PCI_PRIMARY_BUS, &buses);
+	old_buses = buses;
+	subordinate = (old_buses >> 16) & 0xff;
+	subordinate += delta;
+	buses &= 0xff000000;
+	buses |= (unsigned int)bus->primary;
+	buses |= (unsigned int)(bus->number << 8);
+	buses |= (unsigned int)(subordinate << 16);
+	pci_write_config_dword(bus->self, PCI_PRIMARY_BUS, buses);
+
+	if (delta < 0)
+		pci_do_move_buses(domain, busnr + 1, first_moved_busnr,
+				  delta, valid_range);
+}
+
+/*
+ * Buses can only be moved if distributed continuously, without neither gaps nor reserved
+ * bus numbers.
+ *
+ * Secondary bus of every bridge is expanded to the maximum possible value allowed be the
+ * root bridge.
+ */
+static int pci_move_buses(int domain, int busnr, int delta,
+			  const struct resource *valid_range)
+{
+	if (!pci_can_move_buses)
+		return 0;
+
+	if (!delta)
+		return 0;
+
+	/* Return immediately for the root bus */
+	if (!busnr)
+		return 0;
+
+	if (busnr < valid_range->start || busnr > valid_range->end) {
+		pr_err("Bus number %02x is outside of valid range %pR\n",
+		       busnr, valid_range);
+		return -EINVAL;
+	}
+
+	if (((busnr + delta) < valid_range->start) ||
+	    ((busnr + delta) > valid_range->end)) {
+		pr_err("Can't move bus %02x by %d outside of valid range %pR\n",
+		       busnr, delta, valid_range);
+		return -ENOSPC;
+	}
+
+	if (delta > 0) {
+		struct pci_bus *bus = pci_find_bus(domain, valid_range->end - delta + 1);
+
+		if (bus) {
+			pr_err("Not enough space for bus movement - blocked by %s\n",
+			       dev_name(&bus->dev));
+			return -ENOSPC;
+		}
+	} else {
+		int check_busnr;
+
+		for (check_busnr = busnr + delta; check_busnr < busnr; ++check_busnr) {
+			struct pci_bus *bus = pci_find_bus(domain, check_busnr);
+
+			if (bus) {
+				pr_err("Not enough space for bus movement - blocked by %s\n",
+				       dev_name(&bus->dev));
+				return -ENOSPC;
+			}
+		}
+	}
+
+	pci_do_move_buses(domain, busnr, busnr,
+			  delta, valid_range);
+
+	return 0;
+}
+
+static bool pci_new_bus_needed(struct pci_bus *bus, const struct pci_dev *self)
+{
+	if (!bus)
+		return true;
+
+	if (!pci_can_move_buses)
+		return false;
+
+	if (pci_is_root_bus(bus))
+		return false;
+
+	/* Check if the downstream port already has the requested bus number */
+	if (bus->self == self)
+		return false;
+
+	return true;
+}
+
 static unsigned int pci_scan_child_bus_extend(struct pci_bus *bus,
 					      unsigned int available_buses);
 /**
@@ -1275,6 +1418,10 @@ static int pci_scan_bridge_extend(struct pci_bus *bus, struct pci_dev *dev,
 	bool fixed_buses;
 	u8 fixed_sec, fixed_sub;
 	int next_busnr;
+	struct pci_bus *root = bus;
+
+	while (!pci_is_root_bus(root))
+		root = root->parent;
 
 	/*
 	 * Make sure the bridge is powered on to be able to access config
@@ -1387,7 +1534,17 @@ static int pci_scan_bridge_extend(struct pci_bus *bus, struct pci_dev *dev,
 		 * case we only re-scan this bus.
 		 */
 		child = pci_find_bus(pci_domain_nr(bus), next_busnr);
-		if (!child) {
+		if (pci_new_bus_needed(child, dev)) {
+			if (child) {
+				if (pci_move_buses(pci_domain_nr(child), next_busnr,
+						   1, &root->busn_res))
+					goto out;
+			}
+
+			if (!pci_is_root_bus(bus) &&
+			    bus->busn_res.end < root->busn_res.end)
+				pci_expand_parent_subordinate(bus, bus->busn_res.end + 1);
+
 			child = pci_add_new_bus(bus, dev, next_busnr);
 			if (!child)
 				goto out;
@@ -2878,9 +3035,13 @@ static unsigned int pci_scan_child_bus_extend(struct pci_bus *bus,
 		}
 	}
 
-	/* Reserve buses for SR-IOV capability */
-	used_buses = pci_iov_bus_range(bus);
-	max += used_buses;
+	if (!pci_can_move_buses) {
+		/* Reserve buses for SR-IOV capability */
+		used_buses = pci_iov_bus_range(bus);
+		max += used_buses;
+	} else {
+		used_buses = 0;
+	}
 
 	/*
 	 * After performing arch-dependent fixup of the bus, look behind
@@ -2913,6 +3074,11 @@ static unsigned int pci_scan_child_bus_extend(struct pci_bus *bus,
 		cmax = max;
 		max = pci_scan_bridge_extend(bus, dev, max, 0, 0);
 
+		if (pci_can_move_buses) {
+			used_buses += cmax - max;
+			continue;
+		}
+
 		/*
 		 * Reserve one bus for each bridge now to avoid extending
 		 * hotplug bridges too much during the second scan below.
@@ -2942,11 +3108,17 @@ static unsigned int pci_scan_child_bus_extend(struct pci_bus *bus,
 			 * bridges if any.
 			 */
 			buses = available_buses / hotplug_bridges;
-			buses = min(buses, available_buses - used_buses + 1);
+			buses = min(buses, available_buses - used_buses +
+				    (pci_can_move_buses ? 0 : 1));
 		}
 
 		cmax = max;
 		max = pci_scan_bridge_extend(bus, dev, cmax, buses, 1);
+		if (pci_can_move_buses) {
+			used_buses += max - cmax;
+			continue;
+		}
+
 		/* One bus is already accounted so don't add it again */
 		if (max - cmax > 1)
 			used_buses += max - cmax - 1;
