@@ -2549,6 +2549,9 @@ static void pnv_pci_fixup_bridge_resources(struct pci_bus *bus,
 	bool msi_region = false;
 	int i;
 
+	if (pci_can_move_bars)
+		return;
+
 	/* Check if we need apply fixup to the bridge's windows */
 	if (!pci_is_root_bus(bridge->bus) &&
 	    !pci_is_root_bus(bridge->bus->self->bus))
