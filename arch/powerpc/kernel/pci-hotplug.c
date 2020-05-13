@@ -64,6 +64,8 @@ void pcibios_release_device(struct pci_dev *dev)
 	if (pdn && (pdn->flags & PCI_DN_FLAG_DEAD)) {
 		pci_dbg(dev, "freeing dead pdn\n");
 		kfree(pdn);
+	} else if (pdn && pci_has_flag(PCI_REASSIGN_ALL_BUS)) {
+		pci_free_pdn(pdn);
 	}
 }
 
