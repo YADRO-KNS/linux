@@ -1012,16 +1012,16 @@ void eeh_probe_device(struct pci_dev *dev)
 {
 	struct eeh_dev *edev;
 
-	pr_debug("EEH: Adding device %s\n", pci_name(dev));
-
 	/*
+	 * A device can be already initialized during a previous pass.
+	 *
 	 * pci_dev_to_eeh_dev() can only work if eeh_probe_dev() was
 	 * already called for this device.
 	 */
-	if (WARN_ON_ONCE(pci_dev_to_eeh_dev(dev))) {
-		pci_dbg(dev, "Already bound to an eeh_dev!\n");
+	if (pci_dev_to_eeh_dev(dev))
 		return;
-	}
+
+	pr_debug("EEH: Adding device %s\n", pci_name(dev));
 
 	edev = eeh_ops->probe(dev);
 	if (!edev) {

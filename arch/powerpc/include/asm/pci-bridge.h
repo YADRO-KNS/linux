@@ -226,6 +226,7 @@ extern struct pci_dn *pci_add_device_node_info(struct pci_controller *hose,
 					       struct device_node *dn);
 extern void pci_remove_device_node_info(struct device_node *dn);
 extern void pci_free_pdn(struct pci_dn *pdn);
+extern struct pci_dn *pci_bus_to_pdn(struct pci_bus *bus);
 
 #ifdef CONFIG_PCI_IOV
 struct pci_dn *add_sriov_vf_pdns(struct pci_dev *pdev);
