@@ -127,7 +127,6 @@ static inline void auxiliary_bus_init(void) { }
 
 struct kobject *virtual_device_parent(struct device *dev);
 
-extern int bus_add_device(struct device *dev);
 extern void bus_probe_device(struct device *dev);
 extern void bus_remove_device(struct device *dev);
 

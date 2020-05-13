@@ -472,6 +472,7 @@ out_put:
 	bus_put(dev->bus);
 	return error;
 }
+EXPORT_SYMBOL_GPL(bus_add_device);
 
 /**
  * bus_probe_device - probe drivers for a new device
