@@ -1661,7 +1661,6 @@ void pcibios_scan_phb(struct pci_controller *hose)
 	if (mode == PCI_PROBE_NORMAL) {
 		pci_bus_update_busn_res_end(bus, 255);
 		hose->last_busno = pci_scan_child_bus(bus);
-		pci_bus_update_busn_res_end(bus, hose->last_busno);
 	}
 
 	/* Platform gets a chance to do some global fixups before
