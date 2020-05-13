@@ -499,6 +499,42 @@ void bus_probe_device(struct device *dev)
 }
 
 /**
+ * bus_disconnect_device - disconnect device from bus,
+ * but don't detach it from driver
+ * @dev: device to be disconnected
+ *
+ * - Remove device from all interfaces.
+ * - Remove symlink from bus' directory.
+ * - Delete device from bus's list.
+ */
+void bus_disconnect_device(struct device *dev)
+{
+	struct bus_type *bus = dev->bus;
+	struct subsys_interface *sif;
+
+	if (!bus)
+		return;
+
+	mutex_lock(&bus->p->mutex);
+	list_for_each_entry(sif, &bus->p->interfaces, node)
+		if (sif->remove_dev)
+			sif->remove_dev(dev, sif);
+	mutex_unlock(&bus->p->mutex);
+
+	sysfs_remove_link(&dev->kobj, "subsystem");
+	sysfs_remove_link(&dev->bus->p->devices_kset->kobj,
+			  dev_name(dev));
+	device_remove_groups(dev, dev->bus->dev_groups);
+	if (klist_node_attached(&dev->p->knode_bus))
+		klist_del(&dev->p->knode_bus);
+
+	pr_debug("bus: '%s': remove device %s\n",
+		 dev->bus->name, dev_name(dev));
+	bus_put(dev->bus);
+}
+EXPORT_SYMBOL_GPL(bus_disconnect_device);
+
+/**
  * bus_remove_device - remove device from bus
  * @dev: device to be removed
  *
