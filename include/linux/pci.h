@@ -477,6 +477,7 @@ struct pci_dev {
 
 #ifdef CONFIG_HOTPLUG_PCI_PCIE
 	unsigned int	broken_cmd_compl:1;	/* No compl for some cmds */
+	unsigned int	no_cmd_compl_wo_ccie:1;	/* No compl if CCIE is unset */
 #endif
 #ifdef CONFIG_PCIE_PTM
 	u16		ptm_cap;		/* PTM Capability */
