@@ -82,9 +82,36 @@ static void pci_stop_bus_device(struct pci_dev *dev)
 	pci_stop_dev(dev);
 }
 
+static void pci_contract_buses(struct pci_bus *bus)
+{
+	struct pci_dev *child, *tmp;
+	int last_bus;
+
+	if (!bus || pci_is_root_bus(bus) || !bus->self)
+		return;
+
+	last_bus = bus->number;
+
+	list_for_each_entry_safe(child, tmp, &bus->devices, bus_list)
+		if (child->subordinate)
+			if (last_bus < child->subordinate->busn_res.end)
+				last_bus = child->subordinate->busn_res.end;
+
+	if (last_bus < bus->busn_res.end) {
+		u32 buses;
+
+		bus->busn_res.end = last_bus;
+		pci_read_config_dword(bus->self, PCI_PRIMARY_BUS, &buses);
+		buses = (buses & 0xff00ffff) | (last_bus << 16);
+		pci_write_config_dword(bus->self, PCI_PRIMARY_BUS, buses);
+	}
+
+	pci_contract_buses(bus->parent);
+}
+
 static void pci_remove_bus_device(struct pci_dev *dev)
 {
-	struct pci_bus *bus = dev->subordinate;
+	struct pci_bus *bus = dev->subordinate, *parent = dev->bus;
 	struct pci_dev *child, *tmp;
 
 	if (bus) {
@@ -97,6 +124,9 @@ static void pci_remove_bus_device(struct pci_dev *dev)
 	}
 
 	pci_destroy_dev(dev);
+
+	if (bus)
+		pci_contract_buses(parent);
 }
 
 /**

@@ -1446,6 +1446,30 @@ static bool pci_new_bus_needed(struct pci_bus *bus, const struct pci_dev *self)
 	return true;
 }
 
+static void pci_compact_bus_numbers(const int domain, const struct resource *valid_range)
+{
+	int busnr_p1 = valid_range->start;
+
+	while (busnr_p1 < valid_range->end) {
+		int busnr_p2 = busnr_p1 + 1;
+		struct pci_bus *bus_p2;
+		int delta;
+
+		while (busnr_p2 <= valid_range->end &&
+		       !(bus_p2 = pci_find_bus(domain, busnr_p2)))
+			++busnr_p2;
+
+		if (!bus_p2 || busnr_p2 > valid_range->end)
+			break;
+
+		delta = busnr_p1 - busnr_p2 + 1;
+		if (delta)
+			pci_move_buses(domain, busnr_p2, delta, valid_range);
+
+		++busnr_p1;
+	}
+}
+
 static unsigned int pci_scan_child_bus_extend(struct pci_bus *bus,
 					      unsigned int available_buses);
 /**
@@ -3879,6 +3903,9 @@ unsigned int pci_rescan_bus(struct pci_bus *bus)
 		pci_bus_rescan_prepare(root);
 		pcibios_root_bus_rescan_prepare(root);
 		pci_bus_update_fixed_range(root);
+
+		pci_compact_bus_numbers(pci_domain_nr(bus),
+					&root->busn_res);
 
 		max = pci_scan_child_bus(root);
 
