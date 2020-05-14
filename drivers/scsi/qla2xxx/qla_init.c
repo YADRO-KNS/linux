@@ -4575,7 +4575,7 @@ static int
 qla2x00_fw_ready(scsi_qla_host_t *vha)
 {
 	int		rval;
-	unsigned long	wtime, mtime, cs84xx_time;
+	unsigned long	wtime, mtime, cs84xx_time, ltime;
 	uint16_t	min_wait;	/* Minimum wait time if loop is down */
 	uint16_t	wait_time;	/* Wait time if loop is coming ready */
 	uint16_t	state[6];
@@ -4597,6 +4597,9 @@ qla2x00_fw_ready(scsi_qla_host_t *vha)
 	if ((wait_time = (ha->retry_count*ha->login_timeout) + 5) < min_wait) {
 		wait_time = min_wait;
 	}
+
+	/* timeout for loss of sync state */
+	ltime = jiffies + (5 * HZ);
 
 	/* Min wait time if loop down */
 	mtime = jiffies + (min_wait * HZ);
@@ -4661,7 +4664,9 @@ qla2x00_fw_ready(scsi_qla_host_t *vha)
 				/* Loop down. Timeout on min_wait for states
 				 * other than Wait for Login.
 				 */
-				if (time_after_eq(jiffies, mtime)) {
+				if ((state[0] == FSTATE_LOSS_OF_SYNC &&
+				    time_after_eq(jiffies, ltime)) ||
+				    time_after_eq(jiffies, mtime)) {
 					ql_log(ql_log_info, vha, 0x8038,
 					    "Cable is unplugged...\n");
 
