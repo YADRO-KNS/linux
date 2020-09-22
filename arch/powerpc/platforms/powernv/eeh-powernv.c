@@ -154,10 +154,13 @@ static void pnv_eeh_enable_phbs(void)
 		 * Otherwise, we restore to conventional mechanism
 		 * to clear frozen PE during PCI config access.
 		 */
-		if (eeh_enabled())
+		if (eeh_enabled()) {
 			phb->flags |= PNV_PHB_FLAG_EEH;
-		else
+			opal_phb_set_option(phb->opal_id, OPAL_PHB_OPTION_MMIO_EEH_DISABLE, 0);
+		} else {
 			phb->flags &= ~PNV_PHB_FLAG_EEH;
+			opal_phb_set_option(phb->opal_id, OPAL_PHB_OPTION_MMIO_EEH_DISABLE, 1);
+		}
 	}
 }
 

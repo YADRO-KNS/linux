@@ -312,6 +312,11 @@ s64 opal_mpipl_query_tag(enum opal_mpipl_tags tag, u64 *addr);
 s64 opal_signal_system_reset(s32 cpu);
 s64 opal_quiesce(u64 shutdown_type, s32 cpu);
 
+int opal_phb_set_option(uint64_t phb_id, uint64_t opt,
+			uint64_t setting);
+int opal_phb_get_option(uint64_t phb_id, uint64_t opt,
+			__be64 *setting);
+
 /* Internal functions */
 extern int early_init_dt_scan_opal(unsigned long node, const char *uname,
 				   int depth, void *data);
