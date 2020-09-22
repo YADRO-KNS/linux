@@ -488,14 +488,16 @@ void pnv_pci_dump_phb_diag_data(struct pci_controller *hose,
 static void pnv_pci_handle_eeh_config(struct pnv_phb *phb, u32 pe_no)
 {
 	unsigned long flags, rc;
-	int has_diag, ret = 0;
+	int has_diag = 0, ret = 0;
 
 	spin_lock_irqsave(&phb->lock, flags);
 
-	/* Fetch PHB diag-data */
-	rc = opal_pci_get_phb_diag_data2(phb->opal_id, phb->diag_data,
-					 phb->diag_data_size);
-	has_diag = (rc == OPAL_SUCCESS);
+	if (eeh_enabled()) {
+		/* Fetch PHB diag-data */
+		rc = opal_pci_get_phb_diag_data2(phb->opal_id, phb->diag_data,
+						 phb->diag_data_size);
+		has_diag = (rc == OPAL_SUCCESS);
+	}
 
 	/* If PHB supports compound PE, to handle it */
 	if (phb->unfreeze_pe) {

@@ -517,6 +517,9 @@ static void pnv_eeh_get_phb_diag(struct eeh_pe *pe)
 	struct pnv_phb *phb = pe->phb->private_data;
 	s64 rc;
 
+	if (!eeh_enabled())
+		return;
+
 	rc = opal_pci_get_phb_diag_data2(phb->opal_id, pe->data,
 					 phb->diag_data_size);
 	if (rc != OPAL_SUCCESS)
