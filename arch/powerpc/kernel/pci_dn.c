@@ -82,6 +82,9 @@ struct pci_dn *pci_get_pdn_by_devfn(struct pci_bus *bus,
 		}
 	}
 
+	if (pci_has_flag(PCI_REASSIGN_ALL_BUS))
+		goto skip_slow_path;
+
 	if (!pdev_found)
 		pdev = NULL;
 
@@ -104,6 +107,7 @@ struct pci_dn *pci_get_pdn_by_devfn(struct pci_bus *bus,
 		}
 	}
 
+skip_slow_path:
 	return NULL;
 }
 
@@ -130,6 +134,9 @@ struct pci_dn *pci_get_pdn(struct pci_dev *pdev)
 	if (!parent)
 		return NULL;
 
+	if (pci_has_flag(PCI_REASSIGN_ALL_BUS))
+		goto skip_slow_path;
+
 	list_for_each_entry(pdn, &parent->child_list, list) {
 		if (pdn->busno == pdev->bus->number &&
 		    pdn->devfn == pdev->devfn) {
@@ -138,6 +145,7 @@ struct pci_dn *pci_get_pdn(struct pci_dev *pdev)
 		}
 	}
 
+skip_slow_path:
 	return pci_create_pdn_from_dev(pdev, parent);
 }
 
