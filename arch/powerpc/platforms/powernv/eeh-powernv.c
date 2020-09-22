@@ -1660,6 +1660,9 @@ static int __init eeh_powernv_init(void)
 	struct pnv_phb *phb;
 	int ret = -EINVAL;
 
+	if (eeh_has_flag(EEH_FORCE_DISABLED))
+		return 0;
+
 	if (!firmware_has_feature(FW_FEATURE_OPAL)) {
 		pr_warn("%s: OPAL is required !\n", __func__);
 		return -EINVAL;

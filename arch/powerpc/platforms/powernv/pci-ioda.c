@@ -733,6 +733,9 @@ static int pnv_ioda_set_peltv(struct pnv_phb *phb,
 	struct pci_dev *pdev = NULL;
 	int ret;
 
+	if (!eeh_enabled())
+		return 0;
+
 	/*
 	 * Clear PE frozen state. If it's master PE, we need
 	 * clear slave PE frozen state as well.
@@ -801,6 +804,9 @@ static void pnv_ioda_unset_peltv(struct pnv_phb *phb,
 				 struct pci_dev *parent)
 {
 	int64_t rc;
+
+	if (!eeh_enabled())
+		return;
 
 	while (parent) {
 		struct pci_dn *pdn = pci_get_pdn(parent);
@@ -961,6 +967,9 @@ int pnv_ioda_configure_pe(struct pnv_phb *phb, struct pnv_ioda_pe *pe)
 		pe->mve_number = 0;
 		goto out;
 	}
+
+	if (!eeh_enabled())
+		return 0;
 
 	pe->mve_number = pe->pe_number;
 	rc = opal_pci_set_mve(phb->opal_id, pe->mve_number, pe->pe_number);
