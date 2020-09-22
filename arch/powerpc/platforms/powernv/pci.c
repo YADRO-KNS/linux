@@ -603,6 +603,9 @@ static void pnv_pci_config_check_eeh(struct pci_dn *pdn)
 	unsigned int pe_no;
 	s64	rc;
 
+	if (!eeh_enabled())
+		return;
+
 	/*
 	 * Get the PE#. During the PCI probe stage, we might not
 	 * setup that yet. So all ER errors should be mapped to
@@ -771,7 +774,7 @@ static int pnv_pci_read_config(struct pci_bus *bus,
 		ret = pnv_pci_cfg_read_raw(phb->opal_id, bus->number, devfn,
 					   where, size, val);
 
-		if (!ret && (*val == EEH_IO_ERROR_VALUE(size)) && phb->unfreeze_pe)
+		if (!ret && eeh_enabled() && (*val == EEH_IO_ERROR_VALUE(size)) && phb->unfreeze_pe)
 			phb->unfreeze_pe(phb, phb->ioda.reserved_pe_idx,
 					 OPAL_EEH_ACTION_CLEAR_FREEZE_ALL);
 
@@ -782,6 +785,9 @@ static int pnv_pci_read_config(struct pci_bus *bus,
 		return PCIBIOS_DEVICE_NOT_FOUND;
 
 	ret = pnv_pci_cfg_read(pdn, where, size, val);
+	if (!eeh_enabled())
+		return ret;
+
 	phb = pdn->phb->private_data;
 	if (phb->flags & PNV_PHB_FLAG_EEH && pdn->edev) {
 		if (*val == EEH_IO_ERROR_VALUE(size) &&
@@ -812,6 +818,9 @@ static int pnv_pci_write_config(struct pci_bus *bus,
 		return PCIBIOS_DEVICE_NOT_FOUND;
 
 	ret = pnv_pci_cfg_write(pdn, where, size, val);
+	if (!eeh_enabled())
+		return ret;
+
 	phb = pdn->phb->private_data;
 	if (!(phb->flags & PNV_PHB_FLAG_EEH))
 		pnv_pci_config_check_eeh(pdn);

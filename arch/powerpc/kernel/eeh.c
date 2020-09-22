@@ -384,6 +384,9 @@ static int eeh_phb_check_failure(struct eeh_pe *pe)
 	unsigned long flags;
 	int ret;
 
+	if (!eeh_enabled())
+		return 0;
+
 	if (!eeh_has_flag(EEH_PROBE_MODE_DEV))
 		return -EPERM;
 
