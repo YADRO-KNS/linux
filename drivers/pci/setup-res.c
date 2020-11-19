@@ -392,12 +392,56 @@ static int assign_fixed_resource_on_bus(struct pci_dev *dev, int resno)
 			if (!request_resource(parent_r, r)) {
 				pci_info(dev, "BAR %d: assigned fixed %pR\n", resno, r);
 				return 0;
+			} else {
+				dev_dbg(&dev->bus->dev, "can't assign fixed %pR (%s) to %pR (%s)\n",
+					 r, r->name, parent_r, parent_r->name);
 			}
+		} else {
+			dev_dbg(&dev->bus->dev, "%pR (%s) doesn't contain %pR (%s)\n",
+				 parent_r, parent_r->name, r, r->name);
 		}
 	}
 
 	pci_err(dev, "BAR %d: failed to assign fixed %pR\n", resno, r);
 	return -ENOSPC;
+}
+
+static void pci_res_print(struct pci_bus *orig_bus, struct pci_bus *bus,
+			  int idx, int level)
+{
+	struct pci_dev *child;
+	const char *tab = "\t\t\t\t\t\t";
+
+	if (level == 0)
+		tab = "\t";
+	else if (level == 1)
+		tab = "\t\t";
+	else if (level == 2)
+		tab = "\t\t\t";
+	else if (level == 3)
+		tab = "\t\t\t\t";
+	else if (level == 4)
+		tab = "\t\t\t\t\t";
+
+	list_for_each_entry(child, &bus->devices, bus_list) {
+		int i;
+
+		for (i = 0; i < PCI_NUM_RESOURCES; i++) {
+			struct resource *cres = &child->resource[i];
+
+			if (!cres->flags ||
+			    (cres->flags & IORESOURCE_UNSET) ||
+			    idx != pci_get_bridge_resource_idx(cres))
+				continue;
+
+			dev_dbg(&orig_bus->dev, "%sNext resource: %pR (\"%s\")\n",
+				 tab, cres, cres->name);
+
+			if (i >= PCI_BRIDGE_RESOURCES && child->subordinate)
+				pci_res_print(orig_bus, child->subordinate,
+					      idx, level + 1);
+		}
+	}
 }
 
 int pci_assign_resource(struct pci_dev *dev, int resno)
@@ -418,6 +462,24 @@ int pci_assign_resource(struct pci_dev *dev, int resno)
 	}
 
 	size = resource_size(res);
+
+	if (resno >= PCI_BRIDGE_RESOURCES && dev->subordinate) {
+		int idx = pci_get_bridge_resource_idx(res);
+
+		struct resource *fixed_res =
+			&dev->subordinate->fixed_range[idx];
+
+		if (pci_fixed_range_valid(fixed_res)) {
+			dev_dbg(&dev->subordinate->dev, "Try to assign BAR %d %pR (\"%s\": %pR), consists of:\n",
+				 resno, res, res->name, fixed_res);
+		} else {
+			dev_dbg(&dev->subordinate->dev, "Try to assign BAR %d %pR (\"%s\"), consists of:\n",
+				 resno, res, res->name);
+		}
+
+		pci_res_print(dev->subordinate, dev->subordinate, idx, 0);
+	}
+
 	ret = _pci_assign_resource(dev, resno, size, align);
 
 	/*

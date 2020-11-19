@@ -966,6 +966,9 @@ static void pbus_size_io(struct pci_bus *bus, resource_size_t min_size,
 				size1 += r_size;
 
 			align = pci_resource_alignment(dev, r);
+			dev_dbg(&bus->dev, "pbus_size: BAR 13 +%s %lx BAR %d %pR (%s) from %s\n",
+				 pci_dev_bar_fixed(dev, r) ? "fixed" : "",
+				 r_size, i, r, r->name, dev_name(&dev->dev));
 			if (align > min_align)
 				min_align = align;
 
@@ -979,6 +982,8 @@ static void pbus_size_io(struct pci_bus *bus, resource_size_t min_size,
 
 	size0 = calculate_iosize(size, min_size, size1, 0, 0,
 			resource_size(b_res), min_align);
+	dev_dbg(&bus->dev, "pbus_size: BAR 13 size %llx, size1 %llx, size0 %llx, min_align %llx\n",
+		 size, size1, size0, min_align);
 	size1 = (!realloc_head || (realloc_head && !add_size && !children_add_size)) ? size0 :
 		calculate_iosize(size, min_size, size1, add_size, children_add_size,
 			resource_size(b_res), min_align);
@@ -1123,6 +1128,9 @@ static int pbus_size_mem(struct pci_bus *bus, unsigned long mask,
 				continue;
 			}
 			size += max(r_size, align);
+			dev_dbg(&bus->dev, "pbus_size: BAR %2d +%s %llx BAR %d %pR (%s) from %s\n",
+				 13 + idx, pci_dev_bar_fixed(dev, r) ? "fixed" : "",
+				 r_size, i, r, r->name, dev_name(&dev->dev));
 			/*
 			 * Exclude ranges with size > align from calculation of
 			 * the alignment.
@@ -1146,6 +1154,9 @@ static int pbus_size_mem(struct pci_bus *bus, unsigned long mask,
 				  size0_can_add ? add_size : 0,
 				  size0_can_add ? children_add_size : 0,
 				  resource_size(b_res), min_align);
+
+	dev_dbg(&bus->dev, "pbus_size: BAR %2d size %llx, min_align %llx, size0 %llx, min_size %llx, add_size %llx, children_add_size %llx\n",
+		13 + idx, size, min_align, size0, min_size, add_size, children_add_size);
 
 	add_align = max(min_align, add_align);
 	size1 = (!realloc_head || (realloc_head && !add_size && !children_add_size)) ? size0 :
