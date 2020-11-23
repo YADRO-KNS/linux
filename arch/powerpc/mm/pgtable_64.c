@@ -137,6 +137,7 @@ struct page *pmd_page(pmd_t pmd)
 	}
 	return virt_to_page(pmd_page_vaddr(pmd));
 }
+EXPORT_SYMBOL_GPL(pmd_page);
 
 #ifdef CONFIG_STRICT_KERNEL_RWX
 void mark_rodata_ro(void)
