@@ -267,6 +267,7 @@ static inline bool pci_fixed_range_valid(struct resource *res)
 }
 
 extern bool pci_init_done;
+extern bool io_res_supported;
 
 /* PCIe link information from Link Capabilities 2 */
 #define PCIE_LNKCAP2_SLS2SPEED(lnkcap2) \

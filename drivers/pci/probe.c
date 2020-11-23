@@ -44,6 +44,7 @@ EXPORT_SYMBOL(pci_root_buses);
 static bool pci_try_failed_bars = true;
 bool pci_hotplug_expand = true;
 bool pci_init_done;
+bool io_res_supported;
 
 static LIST_HEAD(pci_domain_busn_res_list);
 
@@ -1071,6 +1072,9 @@ static int pci_register_host_bridge(struct pci_host_bridge *bridge)
 			addr[0] = '\0';
 
 		dev_info(&bus->dev, "root bus resource %pR%s\n", res, addr);
+
+		if (resource_type(res) == IORESOURCE_IO)
+			io_res_supported = true;
 	}
 
 	down_write(&pci_bus_sem);
@@ -3572,6 +3576,9 @@ bool pci_bus_check_bars_assigned(struct pci_bus *bus, bool complete_set)
 				struct resource *r = &dev->resource[i];
 
 				if (!(r->flags & IORESOURCE_UNSET))
+					continue;
+
+				if (r->flags & IORESOURCE_IO && !io_res_supported)
 					continue;
 
 				pci_warn(dev, "BAR %d: requested but not assigned: %pR\n",
