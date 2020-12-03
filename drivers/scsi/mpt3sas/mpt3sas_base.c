@@ -715,6 +715,7 @@ _base_fault_reset_work(struct work_struct *work)
 		 * take some time to execute.
 		 */
 		ioc->remove_host = 1;
+		ioc->dead_host = 1;
 		/*Remove the Dead Host */
 		p = kthread_run(mpt3sas_remove_dead_ioc_func, ioc,
 		    "%s_dead_ioc_%d", ioc->driver_name, ioc->id);
