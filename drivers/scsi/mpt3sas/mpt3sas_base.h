@@ -1109,6 +1109,7 @@ typedef void (*MPT3SAS_FLUSH_RUNNING_CMDS)(struct MPT3SAS_ADAPTER *ioc);
  * @ioc_link_reset_in_progress: phy/hard reset in progress
  * @ignore_loginfos: ignore loginfos during task management
  * @remove_host: flag for when driver unloads, to avoid sending dev resets
+ * @dead_host: flag for when the device has disappeared from PCI
  * @pci_error_recovery: flag to prevent ioc access until slot reset completes
  * @wait_for_discovery_to_complete: flag set at driver load time when
  *                                               waiting on reporting devices
@@ -1303,6 +1304,7 @@ struct MPT3SAS_ADAPTER {
 
 	u8		ignore_loginfos;
 	u8		remove_host;
+	u8		dead_host;
 	u8		pci_error_recovery;
 	u8		wait_for_discovery_to_complete;
 	u8		is_driver_loading;

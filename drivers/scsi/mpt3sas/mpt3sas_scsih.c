@@ -4251,7 +4251,7 @@ inline bool _scsih_allow_scmd_to_device(struct MPT3SAS_ADAPTER *ioc,
 	struct scsi_cmnd *scmd)
 {
 
-	if (ioc->pci_error_recovery)
+	if (ioc->pci_error_recovery || ioc->dead_host)
 		return false;
 
 	if (ioc->hba_mpi_version_belonged == MPI2_VERSION) {
