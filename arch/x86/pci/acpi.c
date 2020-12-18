@@ -299,6 +299,21 @@ static int pci_acpi_root_prepare_resources(struct acpi_pci_root_info *ci)
 	int status;
 
 	status = acpi_pci_probe_root_resources(ci);
+
+	resource_list_for_each_entry(entry, &ci->resources) {
+		struct resource *res = entry->res;
+
+		if (!(res->flags & IORESOURCE_MEM) ||
+		    res->end > pci_mem_start ||
+		    res->start == 0xa0000)
+			continue;
+
+		dev_warn(&ci->root->device->dev, "Fix up PCI start address: %lx -> %llx\n",
+			 pci_mem_start, res->start);
+
+		pci_mem_start = res->start;
+	}
+
 	if (pci_use_crs) {
 		resource_list_for_each_entry_safe(entry, tmp, &ci->resources)
 			if (resource_is_pcicfg_ioport(entry->res))
