@@ -35,6 +35,13 @@ static struct resource busn_resource = {
 LIST_HEAD(pci_root_buses);
 EXPORT_SYMBOL(pci_root_buses);
 
+/*
+ * This flag is used during pci_rescan_bus(), protected by pci_rescan_remove_lock:
+ * it indicates which BARs should be reassigned: every one, or only those which
+ * were assigned before the rescan.
+ */
+static bool pci_try_failed_bars = true;
+
 static LIST_HEAD(pci_domain_busn_res_list);
 
 struct pci_domain_busn_res {
@@ -42,6 +49,41 @@ struct pci_domain_busn_res {
 	struct resource res;
 	int domain_nr;
 };
+
+static void pci_dev_disable_bars(struct pci_dev *dev)
+{
+	assign_bit(PCI_DEV_DISABLED_BARS, &dev->priv_flags, true);
+}
+
+static void pci_dev_enable_bars(struct pci_dev *dev)
+{
+	assign_bit(PCI_DEV_DISABLED_BARS, &dev->priv_flags, false);
+}
+
+static bool pci_dev_bars_enabled(const struct pci_dev *dev)
+{
+	if (pci_try_failed_bars)
+		return true;
+
+	return !(test_bit(PCI_DEV_DISABLED_BARS, &dev->priv_flags));
+}
+
+bool pci_dev_bar_enabled(const struct pci_dev *dev, int idx)
+{
+	if (idx >= PCI_BRIDGE_RESOURCES)
+		return true;
+
+	if (pci_try_failed_bars)
+		return true;
+
+	if (test_bit(PCI_DEV_DISABLED_BARS, &dev->priv_flags))
+		return false;
+
+	if (!pci_dev_is_added(dev))
+		return true;
+
+	return dev->res_mask & (1 << idx);
+}
 
 static struct resource *get_pci_domain_busn_res(int domain_nr)
 {
@@ -3237,6 +3279,24 @@ bool pci_dev_bar_fixed(struct pci_dev *dev, struct resource *res)
 	return true;
 }
 
+static unsigned int pci_dev_count_res_mask(struct pci_dev *dev)
+{
+	unsigned int res_mask = 0;
+	int i;
+
+	for (i = 0; i < PCI_BRIDGE_RESOURCES; i++) {
+		struct resource *r = &dev->resource[i];
+
+		if (!r->flags || !r->parent ||
+		    (r->flags & IORESOURCE_UNSET))
+			continue;
+
+		res_mask |= (1 << i);
+	}
+
+	return res_mask;
+}
+
 static void pci_bus_rescan_prepare(struct pci_bus *bus)
 {
 	struct pci_dev *dev;
@@ -3248,6 +3308,9 @@ static void pci_bus_rescan_prepare(struct pci_bus *bus)
 
 	list_for_each_entry(dev, &bus->devices, bus_list) {
 		struct pci_bus *child = dev->subordinate;
+
+		dev->res_mask = pci_dev_count_res_mask(dev);
+		pci_dev_enable_bars(dev);
 
 		if (child)
 			pci_bus_rescan_prepare(child);
@@ -3302,6 +3365,118 @@ static void pci_setup_bridges(struct pci_bus *bus)
 		pci_setup_bridge(bus);
 }
 
+static struct pci_dev *pci_find_next_new_device(struct pci_bus *bus)
+{
+	struct pci_dev *dev;
+
+	if (!bus)
+		return NULL;
+
+	list_for_each_entry(dev, &bus->devices, bus_list) {
+		struct pci_bus *child_bus = dev->subordinate;
+
+		if (child_bus) {
+			struct pci_dev *next_new_dev;
+
+			next_new_dev = pci_find_next_new_device(child_bus);
+			if (next_new_dev)
+				return next_new_dev;
+		}
+
+		if (!pci_dev_is_added(dev) && pci_dev_bars_enabled(dev))
+			return dev;
+	}
+
+	return NULL;
+}
+
+/**
+ * pci_bus_check_bars_assigned - check BARs under the bridge
+ * @bus: Parent PCI bus
+ * @complete_set: check every BAR, otherwise only those assigned before
+ *
+ * Returns true if every BAR is assigned.
+ */
+bool pci_bus_check_bars_assigned(struct pci_bus *bus, bool complete_set)
+{
+	struct pci_dev *dev;
+	bool good = true;
+
+	if (!bus)
+		return false;
+
+	list_for_each_entry(dev, &bus->devices, bus_list) {
+		struct pci_bus *child = dev->subordinate;
+
+		if (complete_set) {
+			int i;
+
+			for (i = 0; i < PCI_BRIDGE_RESOURCES; ++i) {
+				struct resource *r = &dev->resource[i];
+
+				if (!(r->flags & IORESOURCE_UNSET))
+					continue;
+
+				pci_warn(dev, "BAR %d: requested but not assigned: %pR\n",
+					 i, r);
+				good = false;
+			}
+		} else {
+			unsigned int res_mask;
+
+			if (!pci_dev_bars_enabled(dev))
+				continue;
+
+			res_mask = pci_dev_count_res_mask(dev);
+
+			if (dev->res_mask & ~res_mask) {
+				pci_err(dev, "Non-re-enabled resources found: 0x%x -> 0x%x\n",
+					dev->res_mask, res_mask);
+				good = false;
+			}
+		}
+
+		if (child && !pci_bus_check_bars_assigned(child, complete_set))
+			good = false;
+	}
+
+	return good;
+}
+
+static void pci_reassign_root_bus_resources(struct pci_bus *root)
+{
+	do {
+		struct pci_dev *next_new_dev;
+
+		pci_assign_unassigned_root_bus_resources(root);
+
+		if (pci_bus_check_bars_assigned(root, pci_try_failed_bars))
+			break;
+
+		if (pci_try_failed_bars) {
+			dev_warn(&root->dev, "failed to assign all BARs, retry without those failed before\n");
+
+			pci_bus_release_root_bridge_resources(root);
+			pci_try_failed_bars = false;
+			continue;
+		}
+
+		next_new_dev = pci_find_next_new_device(root);
+		if (!next_new_dev) {
+			dev_err(&root->dev, "failed to reassign BARs even after ignoring all the hot-added devices, reload the kernel with pci=no_movable_bars\n");
+			break;
+		}
+
+		dev_warn(&root->dev, "failed to reassign BARs, disable the next hot-added device %s and retry\n",
+			 dev_name(&next_new_dev->dev));
+
+		pci_dev_disable_bars(next_new_dev);
+		pci_bus_release_root_bridge_resources(root);
+	} while (true);
+
+	pci_try_failed_bars = true;
+}
+
 /**
  * pci_rescan_bus - Scan a PCI bus for devices
  * @bus: PCI bus to scan
@@ -3325,7 +3500,7 @@ unsigned int pci_rescan_bus(struct pci_bus *bus)
 		max = pci_scan_child_bus(root);
 
 		pci_bus_release_root_bridge_resources(root);
-		pci_assign_unassigned_root_bus_resources(root);
+		pci_reassign_root_bus_resources(root);
 
 		pci_setup_bridges(root);
 		pci_bus_rescan_done(root);

@@ -275,6 +275,8 @@ struct pci_bus *pci_bus_get(struct pci_bus *bus);
 void pci_bus_put(struct pci_bus *bus);
 
 bool pci_dev_bar_fixed(struct pci_dev *dev, struct resource *res);
+bool pci_dev_bar_enabled(const struct pci_dev *dev, int idx);
+bool pci_bus_check_bars_assigned(struct pci_bus *bus, bool complete_set);
 
 /* PCIe link information from Link Capabilities 2 */
 #define PCIE_LNKCAP2_SLS2SPEED(lnkcap2) \
@@ -395,6 +397,7 @@ static inline bool pci_dev_is_disconnected(const struct pci_dev *dev)
 
 /* pci_dev priv_flags */
 #define PCI_DEV_ADDED 0
+#define PCI_DEV_DISABLED_BARS 1
 
 static inline void pci_dev_assign_added(struct pci_dev *dev, bool added)
 {

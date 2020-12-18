@@ -474,6 +474,8 @@ int pci_enable_resources(struct pci_dev *dev, int mask)
 		if ((i == PCI_ROM_RESOURCE) &&
 				(!(r->flags & IORESOURCE_ROM_ENABLE)))
 			continue;
+		if (!pci_dev_bar_enabled(dev, i))
+			continue;
 
 		if (r->flags & IORESOURCE_UNSET) {
 			pci_err(dev, "can't enable device: BAR %d %pR not assigned\n",
