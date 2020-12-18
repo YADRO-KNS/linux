@@ -139,6 +139,9 @@ int pci_claim_resource(struct pci_dev *dev, int resource)
 		return -EINVAL;
 	}
 
+	if (pci_dev_bar_fixed(dev, res))
+		return 0;
+
 	/*
 	 * If we have a shadow copy in RAM, the PCI device doesn't respond
 	 * to the shadow range, so we don't need to claim it, and upstream
