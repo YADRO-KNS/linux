@@ -3578,7 +3578,7 @@ static void pci_reassign_root_bus_resources(struct pci_bus *root)
 unsigned int pci_rescan_bus(struct pci_bus *bus)
 {
 	unsigned int max;
-	struct pci_bus *root = bus;
+	struct pci_bus *root = bus, *child;
 
 	while (!pci_is_root_bus(root))
 		root = root->parent;
@@ -3598,6 +3598,9 @@ unsigned int pci_rescan_bus(struct pci_bus *bus)
 		max = pci_scan_child_bus(bus);
 		pci_assign_unassigned_bus_resources(bus);
 	}
+
+	list_for_each_entry(child, &root->children, node)
+		pcie_bus_configure_settings(child);
 
 	pci_bus_add_devices(bus);
 
