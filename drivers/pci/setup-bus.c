@@ -2108,7 +2108,14 @@ void __init pci_assign_unassigned_resources(void)
 		/* Make sure the root bridge has a companion ACPI device */
 		if (ACPI_HANDLE(root_bus->bridge))
 			acpi_ioapic_add(ACPI_HANDLE(root_bus->bridge));
+
+		if (pci_can_move_bars && !pci_bus_check_bars_assigned(root_bus, true)) {
+			dev_err(&root_bus->dev, "Not all requested BARs are assigned, triggering a rescan with movable BARs");
+			pci_rescan_bus(root_bus);
+		}
 	}
+
+	pci_init_done = true;
 }
 
 void pci_assign_unassigned_bridge_resources(struct pci_dev *bridge)

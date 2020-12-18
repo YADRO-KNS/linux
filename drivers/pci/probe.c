@@ -42,6 +42,7 @@ EXPORT_SYMBOL(pci_root_buses);
  * were assigned before the rescan.
  */
 static bool pci_try_failed_bars = true;
+bool pci_init_done;
 
 static LIST_HEAD(pci_domain_busn_res_list);
 
@@ -3355,7 +3356,7 @@ static unsigned int pci_dev_count_res_mask(struct pci_dev *dev)
 		struct resource *r = &dev->resource[i];
 
 		if (!r->flags || !r->parent ||
-		    (r->flags & IORESOURCE_UNSET))
+		    (pci_init_done && (r->flags & IORESOURCE_UNSET)))
 			continue;
 
 		res_mask |= (1 << i);
