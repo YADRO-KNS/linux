@@ -126,7 +126,8 @@ static resource_size_t get_res_add_align(struct list_head *head,
 
 
 /* Sort resources by alignment */
-static void pdev_sort_resources(struct pci_dev *dev, struct list_head *head)
+static void pdev_sort_resources(struct pci_dev *dev, struct list_head *head,
+				struct list_head *head_fixed)
 {
 	int i;
 
@@ -135,17 +136,27 @@ static void pdev_sort_resources(struct pci_dev *dev, struct list_head *head)
 		struct pci_dev_resource *dev_res, *tmp;
 		resource_size_t r_align;
 		struct list_head *n;
+		struct resource *fixed_res = NULL;
 
 		r = &dev->resource[i];
-
-		if (r->flags & IORESOURCE_PCI_FIXED)
-			continue;
 
 		if (!(r->flags) || r->parent || !pci_dev_bar_enabled(dev, i))
 			continue;
 
+		if (i >= PCI_BRIDGE_RESOURCES &&
+		    dev->subordinate) {
+			int idx = i - PCI_BRIDGE_RESOURCES;
+
+			fixed_res = &dev->subordinate->fixed_range[idx];
+		} else if (pci_dev_bar_fixed(dev, r)) {
+			fixed_res = r;
+		}
+
+		if (fixed_res && !pci_fixed_range_valid(fixed_res))
+			fixed_res = NULL;
+
 		r_align = pci_resource_alignment(dev, r);
-		if (!r_align) {
+		if (!r_align && !fixed_res) {
 			pci_warn(dev, "BAR %d: %pR has bogus alignment\n",
 				 i, r);
 			continue;
@@ -156,6 +167,30 @@ static void pdev_sort_resources(struct pci_dev *dev, struct list_head *head)
 			panic("%s: kzalloc() failed!\n", __func__);
 		tmp->res = r;
 		tmp->dev = dev;
+
+		if (fixed_res) {
+			n = head_fixed;
+			list_for_each_entry(dev_res, head_fixed, list) {
+				struct resource *c_fixed_res = NULL;
+				int c_resno = dev_res->res - dev_res->dev->resource;
+				int br_idx = c_resno - PCI_BRIDGE_RESOURCES;
+				struct pci_bus *cbus = dev_res->dev->subordinate;
+
+				if (br_idx >= 0)
+					c_fixed_res = &cbus->fixed_range[br_idx];
+				else
+					c_fixed_res = dev_res->res;
+
+				if (fixed_res->start < c_fixed_res->start) {
+					n = &dev_res->list;
+					break;
+				}
+			}
+			/* Insert it just before n */
+			list_add_tail(&tmp->list, n);
+
+			continue;
+		}
 
 		/* Fallback is smallest one or list is empty */
 		n = head;
@@ -175,7 +210,8 @@ static void pdev_sort_resources(struct pci_dev *dev, struct list_head *head)
 	}
 }
 
-static void __dev_sort_resources(struct pci_dev *dev, struct list_head *head)
+static void __dev_sort_resources(struct pci_dev *dev, struct list_head *head,
+				 struct list_head *head_fixed)
 {
 	u16 class = dev->class >> 8;
 
@@ -191,7 +227,7 @@ static void __dev_sort_resources(struct pci_dev *dev, struct list_head *head)
 			return;
 	}
 
-	pdev_sort_resources(dev, head);
+	pdev_sort_resources(dev, head, head_fixed);
 }
 
 static inline void reset_resource(struct resource *res)
@@ -486,8 +522,13 @@ static void pdev_assign_resources_sorted(struct pci_dev *dev,
 					 struct list_head *fail_head)
 {
 	LIST_HEAD(head);
+	LIST_HEAD(head_fixed);
 
-	__dev_sort_resources(dev, &head);
+	__dev_sort_resources(dev, &head, &head_fixed);
+
+	if (!list_empty(&head_fixed))
+		__assign_resources_sorted(&head_fixed, NULL, NULL);
+
 	__assign_resources_sorted(&head, add_head, fail_head);
 
 }
@@ -498,9 +539,13 @@ static void pbus_assign_resources_sorted(const struct pci_bus *bus,
 {
 	struct pci_dev *dev;
 	LIST_HEAD(head);
+	LIST_HEAD(head_fixed);
 
 	list_for_each_entry(dev, &bus->devices, bus_list)
-		__dev_sort_resources(dev, &head);
+		__dev_sort_resources(dev, &head, &head_fixed);
+
+	if (!list_empty(&head_fixed))
+		__assign_resources_sorted(&head_fixed, NULL, NULL);
 
 	__assign_resources_sorted(&head, realloc_head, fail_head);
 }
