@@ -480,6 +480,9 @@ int pci_resize_resource(struct pci_dev *dev, int resno, int size)
 	u32 sizes;
 	u16 cmd;
 
+	if (pci_dev_bar_fixed(dev, res))
+		return -EOPNOTSUPP;
+
 	/* Make sure the resource isn't assigned before resizing it. */
 	if (!(res->flags & IORESOURCE_UNSET))
 		return -EBUSY;
@@ -506,7 +509,15 @@ int pci_resize_resource(struct pci_dev *dev, int resno, int size)
 	res->end = res->start + pci_rebar_size_to_bytes(size) - 1;
 
 	/* Check if the new config works by trying to assign everything. */
-	if (dev->bus->self) {
+	if (pci_can_move_bars) {
+		pci_rescan_bus(dev->bus);
+
+		if (!res->flags || (res->flags & IORESOURCE_UNSET) || !res->parent) {
+			pci_err(dev, "BAR %d resize failed\n", resno);
+			ret = -1;
+			goto error_resize;
+		}
+	} else if (dev->bus->self) {
 		ret = pci_reassign_bridge_resources(dev->bus->self, res->flags);
 		if (ret)
 			goto error_resize;
@@ -516,6 +527,8 @@ int pci_resize_resource(struct pci_dev *dev, int resno, int size)
 error_resize:
 	pci_rebar_set_size(dev, resno, old);
 	res->end = res->start + pci_rebar_size_to_bytes(old) - 1;
+	if (pci_can_move_bars)
+		pci_rescan_bus(dev->bus);
 	return ret;
 }
 EXPORT_SYMBOL(pci_resize_resource);
