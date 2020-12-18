@@ -278,6 +278,17 @@ bool pci_dev_bar_fixed(struct pci_dev *dev, struct resource *res);
 bool pci_dev_bar_enabled(const struct pci_dev *dev, int idx);
 bool pci_bus_check_bars_assigned(struct pci_bus *bus, bool complete_set);
 
+static inline void pci_set_fixed_range(struct resource *res)
+{
+	res->start = (resource_size_t)-1;
+	res->end = 0;
+}
+
+static inline bool pci_fixed_range_valid(struct resource *res)
+{
+	return res->start <= res->end;
+}
+
 extern bool pci_init_done;
 
 /* PCIe link information from Link Capabilities 2 */
@@ -395,6 +406,18 @@ static inline int pci_dev_set_disconnected(struct pci_dev *dev, void *unused)
 static inline bool pci_dev_is_disconnected(const struct pci_dev *dev)
 {
 	return dev->error_state == pci_channel_io_perm_failure;
+}
+
+static inline int pci_get_bridge_resource_idx(struct resource *r)
+{
+	if (r->flags & IORESOURCE_IO)
+		return 0;
+	else if (!(r->flags & IORESOURCE_PREFETCH))
+		return 1;
+	else if (r->flags & IORESOURCE_MEM_64)
+		return 2;
+
+	return 1;
 }
 
 /* pci_dev priv_flags */
