@@ -2314,6 +2314,7 @@ struct pci_dev *pci_alloc_dev(struct pci_bus *bus)
 		.start = 0,
 		.end = -1,
 	};
+	mutex_init(&dev->enable_mutex);
 
 #ifdef CONFIG_PCI_MSI
 	raw_spin_lock_init(&dev->msi_lock);
