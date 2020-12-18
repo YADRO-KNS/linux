@@ -575,3 +575,66 @@ handle the PCI master abort on all platforms if the PCI device is
 expected to not respond to a readl().  Most x86 platforms will allow
 MMIO reads to master abort (a.k.a. "Soft Fail") and return garbage
 (e.g. ~0). But many RISC platforms will crash (a.k.a."Hard Fail").
+
+
+Movable BARs
+============
+
+To increase the probability of finding a space for BARs of hot-added devices,
+the kernel requests the drivers to release used BARs, so they can be moved
+to free a gap for new BARs.
+
+This ability can be added to a driver by implementing the
+:c:type:`rescan_prepare()`, :c:type:`bar_fixed()` and :c:type:`rescan_done()`
+hooks from the :c:type:`struct pci_driver`.
+
+Before a PCI bus rescan the driver must pause its activity and unmap its
+BARs, here is an example of how the NVMe driver can perform this::
+
+    static struct pci_driver nvme_driver = {
+            ...
+            .bar_fixed      = nvme_bar_fixed,
+            .rescan_prepare = nvme_rescan_prepare,
+            .rescan_done    = nvme_rescan_done,
+    };
+
+    static bool nvme_bar_fixed(struct pci_dev *pdev, int resno)
+    {
+            return false;
+    }
+
+    static void nvme_rescan_prepare(struct pci_dev *pdev)
+    {
+            struct nvme_dev *dev = pci_get_drvdata(pdev);
+
+            nvme_dev_disable(dev, true);
+            nvme_dev_unmap(dev);
+            dev->bar = NULL;
+    }
+
+The NVMe driver uses a single BAR, which is movable.  After a PCI rescan,
+the driver must re-read new addresses of BARs, remap them and resume::
+
+    static void nvme_rescan_done(struct pci_dev *pdev)
+    {
+            struct nvme_dev *dev = pci_get_drvdata(pdev);
+
+            nvme_dev_map(dev);
+            nvme_reset_ctrl(&dev->ctrl);
+    }
+
+Currently there are no reliable way to determine if a driver uses BARs of
+its devices or not (their :c:type:`struct resource` don't always have a child),
+so if it doesn't explicitly support movable BARs, they are considered fixed.
+To let the PCI subsystem move unused BARs, a driver have to implement one hook::
+
+    static bool pcie_portdrv_bar_fixed(struct pci_dev *pdev, int resno)
+    {
+            return false;
+    }
+
+    static struct pci_driver pcie_portdriver = {
+    {
+            ...
+            .bar_fixed      = pcie_portdrv_bar_fixed,
+    }

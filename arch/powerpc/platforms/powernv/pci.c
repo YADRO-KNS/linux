@@ -890,6 +890,8 @@ void __init pnv_pci_init(void)
 {
 	struct device_node *np;
 
+	pci_can_move_bars = false;
+
 	pci_add_flags(PCI_CAN_SKIP_ISA_ALIGN);
 
 	/* If we don't have OPAL, eg. in sim, just skip PCI probe */

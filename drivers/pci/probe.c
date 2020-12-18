@@ -2473,6 +2473,11 @@ void pci_device_add(struct pci_dev *dev, struct pci_bus *bus)
 	/* Fix up broken headers */
 	pci_fixup_device(pci_fixup_header, dev);
 
+	if (dev->transparent && pci_can_move_bars) {
+		pci_info(dev, "Disable movable BARs in presence of a transparent bridge\n");
+		pci_can_move_bars = false;
+	}
+
 	pci_reassigndev_resource_alignment(dev);
 
 	dev->state_saved = false;
@@ -3007,6 +3012,7 @@ int pci_host_probe(struct pci_host_bridge *bridge)
 	 * or pci_bus_assign_resources().
 	 */
 	if (pci_has_flag(PCI_PROBE_ONLY)) {
+		pci_can_move_bars = false;
 		pci_bus_claim_resources(bus);
 	} else {
 		pci_bus_size_bridges(bus);
@@ -3200,6 +3206,83 @@ unsigned int pci_rescan_bus_bridge_resize(struct pci_dev *bridge)
 	return max;
 }
 
+bool pci_dev_bar_fixed(struct pci_dev *dev, struct resource *res)
+{
+	int resno = res - dev->resource;
+
+	/* Bridge windows are never fixed */
+	if (resno >= PCI_BRIDGE_RESOURCES)
+		return false;
+
+	if (res->flags & IORESOURCE_PCI_FIXED)
+		return true;
+
+	if (res->flags & IORESOURCE_UNSET)
+		return false;
+
+	if (!pci_can_move_bars)
+		return false;
+
+	if (dev->driver && dev->driver->bar_fixed)
+		return dev->driver->bar_fixed(dev, resno);
+
+	if (res->start &&
+	    !(res->flags & IORESOURCE_IO) &&
+	    (dev->class >> 8) == PCI_CLASS_DISPLAY_VGA)
+		return true;
+
+	if (!dev->driver && !res->child)
+		return false;
+
+	return true;
+}
+
+static void pci_bus_rescan_prepare(struct pci_bus *bus)
+{
+	struct pci_dev *dev;
+
+	if (bus->self) {
+		pci_config_pm_runtime_get(bus->self);
+		pm_runtime_get_sync(&bus->self->dev);
+	}
+
+	list_for_each_entry(dev, &bus->devices, bus_list) {
+		struct pci_bus *child = dev->subordinate;
+
+		if (child)
+			pci_bus_rescan_prepare(child);
+
+		if (dev->driver &&
+		    dev->driver->rescan_prepare)
+			dev->driver->rescan_prepare(dev);
+	}
+}
+
+static void pci_bus_rescan_done(struct pci_bus *bus)
+{
+	struct pci_dev *dev;
+
+	if (bus->self && !pci_dev_is_added(bus->self))
+		return;
+
+	list_for_each_entry(dev, &bus->devices, bus_list) {
+		struct pci_bus *child = dev->subordinate;
+
+		if (dev->driver &&
+		    dev->driver->rescan_done)
+			dev->driver->rescan_done(dev);
+
+		if (child)
+			pci_bus_rescan_done(child);
+	}
+
+	if (bus->self) {
+		pci_save_state(bus->self);
+		pm_runtime_put(&bus->self->dev);
+		pci_config_pm_runtime_put(bus->self);
+	}
+}
+
 /**
  * pci_rescan_bus - Scan a PCI bus for devices
  * @bus: PCI bus to scan
@@ -3212,9 +3295,23 @@ unsigned int pci_rescan_bus_bridge_resize(struct pci_dev *bridge)
 unsigned int pci_rescan_bus(struct pci_bus *bus)
 {
 	unsigned int max;
+	struct pci_bus *root = bus;
 
-	max = pci_scan_child_bus(bus);
-	pci_assign_unassigned_bus_resources(bus);
+	while (!pci_is_root_bus(root))
+		root = root->parent;
+
+	if (pci_can_move_bars) {
+		pci_bus_rescan_prepare(root);
+
+		max = pci_scan_child_bus(root);
+		pci_assign_unassigned_root_bus_resources(root);
+
+		pci_bus_rescan_done(root);
+	} else {
+		max = pci_scan_child_bus(bus);
+		pci_assign_unassigned_bus_resources(bus);
+	}
+
 	pci_bus_add_devices(bus);
 
 	return max;
