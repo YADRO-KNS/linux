@@ -771,6 +771,11 @@ static const struct pci_error_handlers pcie_portdrv_err_handler = {
 	.mmio_enabled = pcie_portdrv_mmio_enabled,
 };
 
+static bool pcie_portdrv_bar_fixed(struct pci_dev *pdev, int resno)
+{
+	return false;
+}
+
 static struct pci_driver pcie_portdriver = {
 	.name		= "pcieport",
 	.id_table	= &port_pci_ids[0],
@@ -780,6 +785,8 @@ static struct pci_driver pcie_portdriver = {
 	.shutdown	= pcie_portdrv_remove,
 
 	.err_handler	= &pcie_portdrv_err_handler,
+
+	.bar_fixed	= pcie_portdrv_bar_fixed,
 
 	.driver_managed_dma = true,
 
