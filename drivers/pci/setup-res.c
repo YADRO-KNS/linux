@@ -333,14 +333,51 @@ static int _pci_assign_resource(struct pci_dev *dev, int resno,
 	return ret;
 }
 
+static int assign_fixed_resource_on_bus(struct pci_dev *dev, int resno)
+{
+	int i;
+	struct resource *parent_r;
+	unsigned long mask = IORESOURCE_TYPE_BITS;
+	struct resource *r = dev->resource + resno;
+
+	/*
+	 * If we have a shadow copy in RAM, the PCI device doesn't respond
+	 * to the shadow range
+	 */
+	if (r->flags & IORESOURCE_ROM_SHADOW)
+		return 0;
+
+	pci_bus_for_each_resource(dev->bus, parent_r, i) {
+		if (!parent_r)
+			continue;
+
+		if ((r->flags & mask) != (parent_r->flags & mask))
+			continue;
+
+		if (parent_r->flags & IORESOURCE_PREFETCH &&
+		    !(r->flags & IORESOURCE_PREFETCH))
+			continue;
+
+		if (resource_contains(parent_r, r)) {
+			if (!request_resource(parent_r, r)) {
+				pci_info(dev, "BAR %d: assigned fixed %pR\n", resno, r);
+				return 0;
+			}
+		}
+	}
+
+	pci_err(dev, "BAR %d: failed to assign fixed %pR\n", resno, r);
+	return -ENOSPC;
+}
+
 int pci_assign_resource(struct pci_dev *dev, int resno)
 {
 	struct resource *res = dev->resource + resno;
 	resource_size_t align, size;
 	int ret;
 
-	if (res->flags & IORESOURCE_PCI_FIXED)
-		return 0;
+	if (res->flags && pci_dev_bar_fixed(dev, res))
+		return assign_fixed_resource_on_bus(dev, resno);
 
 	res->flags |= IORESOURCE_UNSET;
 	align = pci_resource_alignment(dev, res);
