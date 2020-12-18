@@ -872,6 +872,8 @@ resource_size_t __weak pcibios_iov_resource_alignment(struct pci_dev *dev,
  */
 resource_size_t pci_sriov_resource_alignment(struct pci_dev *dev, int resno)
 {
+	if (pci_dev_bar_fixed(dev, dev->resource + resno))
+		return 1;
 	return pcibios_iov_resource_alignment(dev, resno);
 }
 
