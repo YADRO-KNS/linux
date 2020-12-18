@@ -141,7 +141,7 @@ static void pdev_sort_resources(struct pci_dev *dev, struct list_head *head)
 		if (r->flags & IORESOURCE_PCI_FIXED)
 			continue;
 
-		if (!(r->flags) || r->parent)
+		if (!(r->flags) || r->parent || !pci_dev_bar_enabled(dev, i))
 			continue;
 
 		r_align = pci_resource_alignment(dev, r);
@@ -903,7 +903,8 @@ static void pbus_size_io(struct pci_bus *bus, resource_size_t min_size,
 			struct resource *r = &dev->resource[i];
 			unsigned long r_size;
 
-			if (r->parent || !(r->flags & IORESOURCE_IO))
+			if (r->parent || !(r->flags & IORESOURCE_IO) ||
+			    !pci_dev_bar_enabled(dev, i))
 				continue;
 			r_size = resource_size(r);
 
@@ -1023,6 +1024,7 @@ static int pbus_size_mem(struct pci_bus *bus, unsigned long mask,
 			resource_size_t r_size;
 
 			if (r->parent || (r->flags & IORESOURCE_PCI_FIXED) ||
+			    !pci_dev_bar_enabled(dev, i) ||
 			    ((r->flags & mask) != type &&
 			     (r->flags & mask) != type2 &&
 			     (r->flags & mask) != type3))
