@@ -1058,6 +1058,7 @@ static int pbus_size_mem(struct pci_bus *bus, unsigned long mask,
 	resource_size_t children_add_size = 0;
 	resource_size_t children_add_align = 0;
 	resource_size_t add_align = 0;
+	bool size0_can_add = pci_can_move_bars && !realloc_head;
 	int idx;
 	struct resource *fixed_range;
 	resource_size_t fixed_size;
@@ -1141,7 +1142,11 @@ static int pbus_size_mem(struct pci_bus *bus, unsigned long mask,
 
 	min_align = calculate_mem_align(aligns, max_order);
 	min_align = max(min_align, window_alignment(bus, b_res->flags));
-	size0 = calculate_memsize(size, min_size, 0, 0, resource_size(b_res), min_align);
+	size0 = calculate_memsize(size, min_size,
+				  size0_can_add ? add_size : 0,
+				  size0_can_add ? children_add_size : 0,
+				  resource_size(b_res), min_align);
+
 	add_align = max(min_align, add_align);
 	size1 = (!realloc_head || (realloc_head && !add_size && !children_add_size)) ? size0 :
 		calculate_memsize(size, min_size, add_size, children_add_size,
@@ -1316,7 +1321,7 @@ void __pci_bus_size_bridges(struct pci_bus *bus, struct list_head *realloc_head)
 
 	case PCI_HEADER_TYPE_BRIDGE:
 		pci_bridge_check_ranges(bus);
-		if (bus->self->is_hotplug_bridge) {
+		if (bus->self->is_hotplug_bridge && pci_hotplug_expand) {
 			additional_io_size  = pci_hotplug_io_size;
 			additional_mmio_size = pci_hotplug_mmio_size;
 			additional_mmio_pref_size = pci_hotplug_mmio_pref_size;

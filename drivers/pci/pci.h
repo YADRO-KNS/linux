@@ -207,6 +207,7 @@ extern unsigned long pci_hotplug_io_size;
 extern unsigned long pci_hotplug_mmio_size;
 extern unsigned long pci_hotplug_mmio_pref_size;
 extern unsigned long pci_hotplug_bus_size;
+extern bool pci_hotplug_expand;
 
 /**
  * pci_match_one_device - Tell if a PCI device structure has a matching

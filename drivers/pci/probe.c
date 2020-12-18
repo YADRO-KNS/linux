@@ -41,6 +41,7 @@ EXPORT_SYMBOL(pci_root_buses);
  * were assigned before the rescan.
  */
 static bool pci_try_failed_bars = true;
+bool pci_hotplug_expand = true;
 bool pci_init_done;
 
 static LIST_HEAD(pci_domain_busn_res_list);
@@ -3542,6 +3543,13 @@ static void pci_reassign_root_bus_resources(struct pci_bus *root)
 		if (pci_bus_check_bars_assigned(root, pci_try_failed_bars))
 			break;
 
+		if (pci_hotplug_expand) {
+			dev_warn(&root->dev, "failed to assign all BARs, retry without additional window size\n");
+
+			pci_hotplug_expand = false;
+			continue;
+		}
+
 		if (pci_try_failed_bars) {
 			dev_warn(&root->dev, "failed to assign all BARs, retry without those failed before\n");
 
@@ -3564,6 +3572,7 @@ static void pci_reassign_root_bus_resources(struct pci_bus *root)
 	} while (true);
 
 	pci_try_failed_bars = true;
+	pci_hotplug_expand = true;
 }
 
 /**
