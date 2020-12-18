@@ -27,7 +27,8 @@ static void pci_std_update_resource(struct pci_dev *dev, int resno)
 	struct pci_bus_region region;
 	bool disable;
 	u16 cmd;
-	u32 new, check, mask;
+	u32 new, check, mask, old;
+	u64 old_start;
 	int reg;
 	struct resource *res = dev->resource + resno;
 
@@ -96,6 +97,9 @@ static void pci_std_update_resource(struct pci_dev *dev, int resno)
 				      cmd & ~PCI_COMMAND_MEMORY);
 	}
 
+	pci_read_config_dword(dev, reg, &old);
+	old_start = old & mask;
+
 	pci_write_config_dword(dev, reg, new);
 	pci_read_config_dword(dev, reg, &check);
 
@@ -105,6 +109,9 @@ static void pci_std_update_resource(struct pci_dev *dev, int resno)
 	}
 
 	if (res->flags & IORESOURCE_MEM_64) {
+		pci_read_config_dword(dev, reg + 4, &old);
+		old_start |= (u64)old << 32;
+
 		new = region.start >> 16 >> 16;
 		pci_write_config_dword(dev, reg + 4, new);
 		pci_read_config_dword(dev, reg + 4, &check);
@@ -116,6 +123,11 @@ static void pci_std_update_resource(struct pci_dev *dev, int resno)
 
 	if (disable)
 		pci_write_config_word(dev, PCI_COMMAND, cmd);
+
+	if (old_start != region.start)
+		pci_info(dev, "BAR %d updated: %#llx -> %#llx\n", resno,
+			 (unsigned long long)old_start,
+			 (unsigned long long)region.start);
 }
 
 void pci_update_resource(struct pci_dev *dev, int resno)
