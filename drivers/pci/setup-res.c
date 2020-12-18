@@ -247,10 +247,26 @@ static int __pci_assign_resource(struct pci_bus *bus, struct pci_dev *dev,
 		int resno, resource_size_t size, resource_size_t align)
 {
 	struct resource *res = dev->resource + resno;
+	struct resource *fixed_range = NULL;
 	resource_size_t min;
 	int ret;
 
 	min = (res->flags & IORESOURCE_IO) ? PCIBIOS_MIN_IO : PCIBIOS_MIN_MEM;
+
+	if (pci_can_move_bars && dev->subordinate && resno >= PCI_BRIDGE_RESOURCES) {
+		struct pci_bus *child_bus = dev->subordinate;
+		int win_no = resno - PCI_BRIDGE_RESOURCES;
+
+		fixed_range = &child_bus->fixed_range[win_no];
+		if (pci_fixed_range_valid(fixed_range)) {
+			if (size <= resource_size(fixed_range))
+				min = fixed_range->start;
+			else
+				min = fixed_range->end - size + 1;
+		} else {
+			fixed_range = NULL;
+		}
+	}
 
 	/*
 	 * First, try exact prefetching match.  Even if a 64-bit
@@ -263,7 +279,7 @@ static int __pci_assign_resource(struct pci_bus *bus, struct pci_dev *dev,
 				     IORESOURCE_PREFETCH | IORESOURCE_MEM_64,
 				     pcibios_align_resource, dev);
 	if (ret == 0)
-		return 0;
+		goto check_fixed;
 
 	/*
 	 * If the prefetchable window is only 32 bits wide, we can put
@@ -275,7 +291,7 @@ static int __pci_assign_resource(struct pci_bus *bus, struct pci_dev *dev,
 					     IORESOURCE_PREFETCH,
 					     pcibios_align_resource, dev);
 		if (ret == 0)
-			return 0;
+			goto check_fixed;
 	}
 
 	/*
@@ -287,6 +303,16 @@ static int __pci_assign_resource(struct pci_bus *bus, struct pci_dev *dev,
 	if (res->flags & (IORESOURCE_PREFETCH | IORESOURCE_MEM_64))
 		ret = pci_bus_alloc_resource(bus, res, size, align, min, 0,
 					     pcibios_align_resource, dev);
+
+check_fixed:
+	if (ret == 0 && fixed_range &&
+	    (res->start > fixed_range->start ||
+	     res->end < fixed_range->end)) {
+		dev_err(&bus->dev, "fixed area %pR for %s doesn't fit in the allocated %pR",
+			fixed_range, dev_name(&dev->dev), res);
+		release_resource(res);
+		return -1;
+	}
 
 	return ret;
 }
