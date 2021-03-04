@@ -1128,6 +1128,9 @@ static void pnv_pci_ioda_dma_dev_setup(struct pci_dev *pdev)
 		pci_info(pdev, "Added to existing PE#%x\n", pe->pe_number);
 	}
 
+	if (pdn->dma_done)
+		return;
+
 	/*
 	 * We assume that bridges *probably* don't need to do any DMA so we can
 	 * skip allocating a TCE table, etc unless we get a non-bridge device.
@@ -1157,6 +1160,8 @@ static void pnv_pci_ioda_dma_dev_setup(struct pci_dev *pdev)
 	/* PEs with a DMA weight of zero won't have a group */
 	if (pe->table_group.group)
 		iommu_add_device(&pe->table_group, &pdev->dev);
+
+	pdn->dma_done = true;
 }
 
 /*
@@ -2829,6 +2834,7 @@ static void pnv_pci_release_device(struct pci_dev *pdev)
 		return;
 
 	iommu_del_device(&pdev->dev);
+	pdn->dma_done = false;
 
 #ifdef CONFIG_PCI_IOV
 	/*
