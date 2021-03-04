@@ -779,7 +779,11 @@ static int pnv_ioda_set_peltv(struct pnv_phb *phb,
 		struct pci_dn *pdn = pci_get_pdn(pdev);
 		struct pnv_ioda_pe *parent;
 
-		if (pdn && pdn->pe_number != IODA_INVALID_PE) {
+		/*
+		 * Workaround: revert to behavior before dc3d8f85:
+		 * link only with root bus's PE.
+		 */
+		if (pdn && pdn->pe_number != IODA_INVALID_PE && 0 == pdev->bus->number) {
 			parent = &phb->ioda.pe_array[pdn->pe_number];
 			ret = pnv_ioda_set_one_peltv(phb, parent, pe, is_add);
 			if (ret)
