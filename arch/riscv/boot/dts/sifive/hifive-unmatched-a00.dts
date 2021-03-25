@@ -3,6 +3,7 @@
 
 #include "fu740-c000.dtsi"
 #include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/pwm/pwm.h>
 
 /* Clock frequency (in Hz) of the PCB crystal for rtcclk */
 #define RTCCLK_FREQ		1000000
@@ -28,6 +29,17 @@
 	};
 
 	soc {
+	};
+
+	pwmleds {
+		compatible = "pwm-leds";
+		d12 {
+			label = "green:d12";
+			pwms = <&pwm0 0 7812500 PWM_POLARITY_INVERTED>;
+			active-low = <1>;
+			max-brightness = <255>;
+			linux,default-trigger = "none";
+		};
 	};
 
 	hfclk: hfclk {
