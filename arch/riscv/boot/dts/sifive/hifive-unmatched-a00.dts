@@ -34,9 +34,33 @@
 
 	pwmleds {
 		compatible = "pwm-leds";
-		d12 {
+		green-d12 {
 			label = "green:d12";
 			pwms = <&pwm0 0 7812500 PWM_POLARITY_INVERTED>;
+			active-low = <1>;
+			max-brightness = <255>;
+			linux,default-trigger = "none";
+		};
+
+		green-d2 {
+			label = "green:d2";
+			pwms = <&pwm0 1 7812500 PWM_POLARITY_INVERTED>;
+			active-low = <1>;
+			max-brightness = <255>;
+			linux,default-trigger = "none";
+		};
+
+		red-d2 {
+			label = "red:d2";
+			pwms = <&pwm0 2 7812500 PWM_POLARITY_INVERTED>;
+			active-low = <1>;
+			max-brightness = <255>;
+			linux,default-trigger = "none";
+		};
+
+		blue-d2 {
+			label = "blue:d2";
+			pwms = <&pwm0 3 7812500 PWM_POLARITY_INVERTED>;
 			active-low = <1>;
 			max-brightness = <255>;
 			linux,default-trigger = "none";
