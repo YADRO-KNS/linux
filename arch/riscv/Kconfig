@@ -541,6 +541,14 @@ config BUILTIN_DTB
 	depends on OF
 	default y if XIP_KERNEL
 
+menu "CPU Power Management"
+
+source "drivers/cpuidle/Kconfig"
+
+source "drivers/cpufreq/Kconfig"
+
+endmenu
+
 menu "Power management options"
 
 source "kernel/power/Kconfig"
