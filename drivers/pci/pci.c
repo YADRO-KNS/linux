@@ -1654,8 +1654,8 @@ int pci_save_state(struct pci_dev *dev)
 	/* XXX: 100% dword access ok here? */
 	for (i = 0; i < 16; i++) {
 		pci_read_config_dword(dev, i * 4, &dev->saved_config_space[i]);
-		pci_dbg(dev, "saving config space at offset %#x (reading %#x)\n",
-			i * 4, dev->saved_config_space[i]);
+		//pci_dbg(dev, "saving config space at offset %#x (reading %#x)\n",
+		//	i * 4, dev->saved_config_space[i]);
 	}
 	dev->state_saved = true;
 
@@ -1686,8 +1686,8 @@ static void pci_restore_config_dword(struct pci_dev *pdev, int offset,
 		return;
 
 	for (;;) {
-		pci_dbg(pdev, "restoring config space at offset %#x (was %#x, writing %#x)\n",
-			offset, val, saved_val);
+		//pci_dbg(pdev, "restoring config space at offset %#x (was %#x, writing %#x)\n",
+		//	offset, val, saved_val);
 		pci_write_config_dword(pdev, offset, saved_val);
 		if (retry-- <= 0)
 			return;
