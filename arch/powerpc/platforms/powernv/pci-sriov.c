@@ -228,6 +228,9 @@ void pnv_pci_ioda_fixup_iov(struct pci_dev *pdev)
 	if (pdev->is_virtfn) {
 		struct pnv_ioda_pe *pe = pnv_ioda_get_pe(pdev);
 
+		if (!pe)
+			return;
+
 		/*
 		 * VF PEs are single-device PEs so their pdev pointer needs to
 		 * be set. The pdev doesn't exist when the PE is allocated (in
