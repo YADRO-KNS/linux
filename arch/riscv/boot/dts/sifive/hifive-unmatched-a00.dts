@@ -4,6 +4,8 @@
 #include "fu740-c000.dtsi"
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/leds/common.h>
+#include <dt-bindings/pwm/pwm.h>
 
 /* Clock frequency (in Hz) of the PCB crystal for rtcclk */
 #define RTCCLK_FREQ		1000000
@@ -24,6 +26,45 @@
 	memory@80000000 {
 		device_type = "memory";
 		reg = <0x0 0x80000000 0x4 0x00000000>;
+	};
+	
+	pwmleds {
+		compatible = "pwm-leds";
+		green-d12 {
+			label = "green:d12";
+			color = <LED_COLOR_ID_GREEN>;
+			pwms = <&pwm0 0 7812500 PWM_POLARITY_INVERTED>;
+			active-low = <1>;
+			max-brightness = <255>;
+			linux,default-trigger = "none";
+		};
+
+		green-d2 {
+			label = "green:d2";
+			color = <LED_COLOR_ID_GREEN>;
+			pwms = <&pwm0 1 7812500 PWM_POLARITY_INVERTED>;
+			active-low = <1>;
+			max-brightness = <255>;
+			linux,default-trigger = "none";
+		};
+
+		red-d2 {
+			label = "red:d2";
+			color = <LED_COLOR_ID_RED>;
+			pwms = <&pwm0 2 7812500 PWM_POLARITY_INVERTED>;
+			active-low = <1>;
+			max-brightness = <255>;
+			linux,default-trigger = "none";
+		};
+
+		blue-d2 {
+			label = "blue:d2";
+			color = <LED_COLOR_ID_BLUE>;
+			pwms = <&pwm0 3 7812500 PWM_POLARITY_INVERTED>;
+			active-low = <1>;
+			max-brightness = <255>;
+			linux,default-trigger = "none";
+		};
 	};
 
 	hfclk: hfclk {
