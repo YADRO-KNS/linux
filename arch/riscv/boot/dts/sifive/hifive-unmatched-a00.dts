@@ -114,6 +114,7 @@
 
 		rtc {
 			compatible = "dlg,da9063-rtc";
+			wakeup-source;
 		};
 
 		wdt {
