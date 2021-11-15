@@ -236,15 +236,6 @@ static const struct pmu_event_data pmu_cache_event_map[PERF_COUNT_HW_CACHE_MAX]
 	},
 };
 
-static DEVICE_ATTR(id, S_IRUGO | S_IWUSR, pmu_sbi_id_show, 0);
-
-static struct attribute *pmu_sbi_attrs[] = {
-    &dev_attr_id.attr,
-    NULL
-};
-
-ATTRIBUTE_GROUPS(pmu_sbi);
-
 static int pmu_sbi_ctr_get_width(int idx)
 {
 	return pmu_ctr_list[idx].width;
@@ -672,12 +663,21 @@ static ssize_t pmu_sbi_id_show(struct device *dev,
         struct device_attribute *attr, char *buf)
 {
     int len;
-    len = sprintf(buf, "0x%lx\n", pmu_sbi_get_pmu_id());
+    len = sprintf(buf, "0x%llx\n", pmu_sbi_get_pmu_id());
     if (len <= 0)
         dev_err(dev, "mydrv: Invalid sprintf len: %dn", len);
 
     return len;
 }
+
+static DEVICE_ATTR(id, S_IRUGO | S_IWUSR, pmu_sbi_id_show, 0);
+
+static struct attribute *pmu_sbi_attrs[] = {
+	&dev_attr_id.attr,
+	NULL
+};
+
+ATTRIBUTE_GROUPS(pmu_sbi);
 
 static int pmu_sbi_device_probe(struct platform_device *pdev)
 {
